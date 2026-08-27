@@ -225,7 +225,7 @@ struct PanelSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: contentSpacing) {
             header
 
             if !collapsible || !collapsed {
@@ -235,7 +235,7 @@ struct PanelSection<Content: View>: View {
     }
 
     private var header: some View {
-        HStack(spacing: 6) {
+        HStack(alignment: .top, spacing: 6) {
             if collapsible {
                 Button(action: toggle) {
                     HStack(spacing: 6) {
@@ -251,22 +251,21 @@ struct PanelSection<Content: View>: View {
                 Spacer(minLength: 0)
             }
             if supportsEditing {
-                Color.clear
-                    .frame(width: editControlsWidth, height: headerContentHeight)
-            }
-        }
-        .overlay(alignment: .trailing) {
-            if supportsEditing {
                 editControls
             }
         }
     }
 
+    /// Editing sections need a 24-point action lane for the Done button. The
+    /// six-point reduction below preserves the original title-to-content
+    /// distance, so changing edit state cannot resize the section or popover.
+    private var contentSpacing: CGFloat { supportsEditing ? 2 : 8 }
+
     private var editControlsWidth: CGFloat {
         editIconWidth + (resetAction == nil ? 0 : editControlSpacing + doneButtonWidth)
     }
 
-    private var headerContentHeight: CGFloat { 18 }
+    private var headerContentHeight: CGFloat { 24 }
     private var editIconWidth: CGFloat { 22 }
     private var doneButtonWidth: CGFloat { 52 }
     private var editControlSpacing: CGFloat { 6 }
@@ -279,11 +278,7 @@ struct PanelSection<Content: View>: View {
             Spacer(minLength: 0)
             editButton
         }
-        .frame(width: editControlsWidth, height: headerContentHeight, alignment: .trailing)
-        // The fixed header stays at its normal 18-point height. Raising the
-        // taller edit controls by three points keeps their visible gaps above
-        // and below the row balanced without moving the section content.
-        .offset(y: isEditing ? -3 : 0)
+        .frame(width: editControlsWidth, height: headerContentHeight, alignment: .topTrailing)
         .opacity(editButtonVisible ? 1 : 0)
         .disabled(!editButtonVisible)
         .accessibilityHidden(!editButtonVisible)
