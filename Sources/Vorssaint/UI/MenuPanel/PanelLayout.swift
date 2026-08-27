@@ -279,6 +279,7 @@ struct PanelSection<Content: View>: View {
             editButton
         }
         .frame(width: editControlsWidth, height: headerContentHeight, alignment: .topTrailing)
+        .offset(y: isEditing ? -8 : 0)
         .opacity(editButtonVisible ? 1 : 0)
         .disabled(!editButtonVisible)
         .accessibilityHidden(!editButtonVisible)
