@@ -745,6 +745,8 @@ extension Strings {
         monitorPanelConfigHint: "Откройте блок, чтобы выбрать, что он показывает.",
         monitorOrderSection: "Порядок секций",
         monitorOrderHint: "Перетаскивайте, чтобы менять порядок секций панели, и используйте глаз, чтобы показывать или скрывать каждую из них.",
+        panelShowBrandMark: "Показывать логотип Vorssaint",
+        panelShowFooterActions: "Показывать кнопки «Настройки» и «Выйти»",
         obStepPanelTitle: "Что находится в панели",
         obStepPanelBody: "Откройте каждый блок и выберите, что именно будет показываться по нажатию на значок.",
         obStepPanelNavigationTitle: "Панель по секциям",

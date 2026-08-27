@@ -745,6 +745,8 @@ extension Strings {
         monitorPanelConfigHint: "블록을 열어 표시할 내용을 선택하세요.",
         monitorOrderSection: "섹션 순서",
         monitorOrderHint: "드래그하여 패널 섹션의 순서를 바꾸고 눈 아이콘으로 각 섹션을 표시하거나 숨길 수 있습니다.",
+        panelShowBrandMark: "Vorssaint 로고 표시",
+        panelShowFooterActions: "설정 및 종료 버튼 표시",
         obStepPanelTitle: "패널에 표시할 항목",
         obStepPanelBody: "각 블록을 열고 아이콘을 클릭했을 때 표시할 내용을 자세히 선택하세요.",
         obStepPanelNavigationTitle: "섹션형 패널",

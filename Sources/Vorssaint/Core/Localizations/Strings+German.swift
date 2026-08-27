@@ -744,6 +744,8 @@ extension Strings {
         monitorPanelConfigHint: "Öffne einen Block, um zu wählen, was er anzeigt.",
         monitorOrderSection: "Reihenfolge der Bereiche",
         monitorOrderHint: "Ziehen, um die Panel-Bereiche neu anzuordnen, und mit dem Auge jeden ein- oder ausblenden.",
+        panelShowBrandMark: "Vorssaint-Logo anzeigen",
+        panelShowFooterActions: "Schaltflächen „Einstellungen“ und „Beenden“ anzeigen",
         obStepPanelTitle: "Was im Panel erscheint",
         obStepPanelBody: "Öffne jeden Block und wähle genau, was angezeigt wird, wenn du auf das Symbol klickst.",
         obStepPanelNavigationTitle: "Panel nach Bereichen",

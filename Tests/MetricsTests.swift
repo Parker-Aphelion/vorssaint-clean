@@ -2526,6 +2526,56 @@ struct MetricsTests {
                "Quick Controls panel section is shown by default")
         expect(registeredDefaults[DefaultsKey.panelShowToggles] as? Bool == true,
                "Quick toggles panel section is shown by default")
+        expect(registeredDefaults[DefaultsKey.panelShowBrandMark] as? Bool == true
+                && registeredDefaults[DefaultsKey.panelShowFooterActions] as? Bool == true,
+               "panel branding and footer actions remain visible by default")
+        expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.panelShowBrandMark)
+                && SettingsBackupSupport.exportKeys().contains(DefaultsKey.panelShowFooterActions),
+               "panel appearance preferences are included in settings backups")
+        let navigableNavigationHeight = MenuPanelChromeLayout.sectionNavigationHeight
+        let metricNavigationHeight = MenuPanelChromeLayout.metricNavigationHeight
+        expect(MenuPanelChromeLayout.height(navigationHeight: navigableNavigationHeight,
+                                            measuredBannerHeight: nil,
+                                            showsBrandMark: true,
+                                            showsFooterActions: true) == 180
+                && MenuPanelChromeLayout.height(navigationHeight: metricNavigationHeight,
+                                                measuredBannerHeight: nil,
+                                                showsBrandMark: true,
+                                                showsFooterActions: true) == 180,
+               "the default panel chrome keeps its stable-release height")
+        expect(MenuPanelChromeLayout.height(navigationHeight: navigableNavigationHeight,
+                                            measuredBannerHeight: nil,
+                                            showsBrandMark: true,
+                                            showsFooterActions: false) == 122
+                && MenuPanelChromeLayout.height(navigationHeight: metricNavigationHeight,
+                                                measuredBannerHeight: nil,
+                                                showsBrandMark: true,
+                                                showsFooterActions: false) == 108,
+               "hiding the footer removes its row and uses even panel padding")
+        expect(MenuPanelChromeLayout.height(navigationHeight: navigableNavigationHeight,
+                                            measuredBannerHeight: nil,
+                                            showsBrandMark: false,
+                                            showsFooterActions: true) == 120
+                && MenuPanelChromeLayout.height(navigationHeight: metricNavigationHeight,
+                                                measuredBannerHeight: nil,
+                                                showsBrandMark: false,
+                                                showsFooterActions: true) == 106,
+               "hiding the brand mark removes its row and uses even panel padding")
+        expect(MenuPanelChromeLayout.height(navigationHeight: navigableNavigationHeight,
+                                            measuredBannerHeight: nil,
+                                            showsBrandMark: false,
+                                            showsFooterActions: false) == 74
+                && MenuPanelChromeLayout.height(navigationHeight: metricNavigationHeight,
+                                                measuredBannerHeight: nil,
+                                                showsBrandMark: false,
+                                                showsFooterActions: false) == 60,
+               "hiding both optional rows leaves side-matched panel padding")
+        expect(MenuPanelChromeLayout.height(navigationHeight: navigableNavigationHeight,
+                                            measuredBannerHeight: 0,
+                                            showsBrandMark: false,
+                                            showsBetaControls: true,
+                                            showsFooterActions: false) == 182,
+               "beta controls and a pending banner retain their own rows")
         expect([DefaultsKey.panelToggleDarkMode, DefaultsKey.panelToggleKeyboardLight,
                 DefaultsKey.panelToggleMicMute,
                 DefaultsKey.panelToggleEmptyTrash,
@@ -8354,6 +8404,11 @@ struct MetricsTests {
                    && !strings.keepAwakeRightClickToggle.contains("—")
                    && !strings.keepAwakeRightClickToggleCaption.contains("—"),
                    "\(prefix) right-click Keep Awake labels are present without em dash")
+            expect(!strings.panelShowBrandMark.isEmpty
+                   && !strings.panelShowFooterActions.isEmpty
+                   && !strings.panelShowBrandMark.contains("—")
+                   && !strings.panelShowFooterActions.contains("—"),
+                   "\(prefix) panel appearance labels are present without em dash")
             expectFormat(strings.homebrewConfirmInstallBodyFormat, ["@"], "\(prefix) Homebrew install format")
             expectFormat(strings.homebrewConfirmUninstallBodyFormat, ["@"], "\(prefix) Homebrew uninstall format")
             expectFormat(strings.homebrewConfirmUpgradeBodyFormat, ["@"], "\(prefix) Homebrew upgrade format")

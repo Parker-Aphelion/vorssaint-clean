@@ -744,6 +744,8 @@ extension Strings {
         monitorPanelConfigHint: "Ouvrez un bloc pour choisir ce qu’il affiche.",
         monitorOrderSection: "Ordre des sections",
         monitorOrderHint: "Glissez pour réordonner les sections du panneau et utilisez l’œil pour afficher ou masquer chacune.",
+        panelShowBrandMark: "Afficher le logo de Vorssaint",
+        panelShowFooterActions: "Afficher les boutons Réglages et Quitter",
         obStepPanelTitle: "Ce qui s’affiche dans le panneau",
         obStepPanelBody: "Ouvrez chaque bloc et choisissez exactement ce qui s’affiche quand vous cliquez sur l’icône.",
         obStepPanelNavigationTitle: "Panneau par sections",

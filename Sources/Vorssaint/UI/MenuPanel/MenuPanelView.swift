@@ -77,6 +77,8 @@ struct MenuPanelView: View {
     @AppStorage(DefaultsKey.panelShowUtilities) private var showUtilities = true
     @AppStorage(DefaultsKey.panelShowControls) private var showControls = true
     @AppStorage(DefaultsKey.panelShowToggles) private var showToggles = true
+    @AppStorage(DefaultsKey.panelShowBrandMark) private var showBrandMark = true
+    @AppStorage(DefaultsKey.panelShowFooterActions) private var showFooterActions = true
     @AppStorage(DefaultsKey.panelSectionOrder) private var sectionOrderRaw = ""
     @State private var navigableContentHeight: CGFloat = 0
     @State private var metricContentHeight: CGFloat = 0
@@ -166,10 +168,12 @@ struct MenuPanelView: View {
     }
 
     private var navigablePanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: MenuPanelChromeLayout.spacing) {
             UpdateBanner()
                 .reportHeight($updateBannerHeight)
-            header
+            if showBrandMark {
+                header
+            }
             sectionNavigation
 
             OverlayScrollView(measuredHeight: $navigableContentHeight) {
@@ -180,18 +184,22 @@ struct MenuPanelView: View {
             }
             .frame(width: 308, height: navigableScrollHeight)
 
-            footer
+            if showFooterActions {
+                footer
+            }
         }
-        .padding(12)
+        .padding(MenuPanelChromeLayout.panelPadding)
         .frame(width: 332, height: navigablePanelHeight)
         .panelGlassSurface()
     }
 
     private var metricPanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: MenuPanelChromeLayout.spacing) {
             UpdateBanner()
                 .reportHeight($updateBannerHeight)
-            header
+            if showBrandMark {
+                header
+            }
 
             if let selectedMetric {
                 metricNavigationHeader(selectedMetric)
@@ -202,9 +210,11 @@ struct MenuPanelView: View {
                 .frame(width: 308, height: metricScrollHeight)
             }
 
-            footer
+            if showFooterActions {
+                footer
+            }
         }
-        .padding(12)
+        .padding(MenuPanelChromeLayout.panelPadding)
         .frame(width: 332, height: metricPanelHeight)
         .panelGlassSurface()
     }
@@ -237,18 +247,28 @@ struct MenuPanelView: View {
 
     private var metricScrollHeight: CGFloat {
         let measured = metricContentHeight == 0 ? estimatedMetricContentHeight : metricContentHeight
-        return min(measured, max(80, maxHeight - navigableChromeHeight))
+        return min(measured, max(80, maxHeight - metricChromeHeight))
     }
 
     private var metricPanelHeight: CGFloat {
-        min(maxHeight, max(220, metricScrollHeight + navigableChromeHeight))
+        min(maxHeight, max(220, metricScrollHeight + metricChromeHeight))
     }
 
     private var navigableChromeHeight: CGFloat {
-        let bannerHeight = updates.state.showsMenuPanelBanner
-            ? (max(updateBannerHeight, 48) + 12)
-            : 0
-        return 180 + bannerHeight
+        chromeHeight(navigationHeight: MenuPanelChromeLayout.sectionNavigationHeight)
+    }
+
+    private var metricChromeHeight: CGFloat {
+        chromeHeight(navigationHeight: MenuPanelChromeLayout.metricNavigationHeight)
+    }
+
+    private func chromeHeight(navigationHeight: CGFloat) -> CGFloat {
+        MenuPanelChromeLayout.height(
+            navigationHeight: navigationHeight,
+            measuredBannerHeight: updates.state.showsMenuPanelBanner ? updateBannerHeight : nil,
+            showsBrandMark: showBrandMark,
+            showsFooterActions: showFooterActions
+        )
     }
 
     private var estimatedNavigableContentHeight: CGFloat {

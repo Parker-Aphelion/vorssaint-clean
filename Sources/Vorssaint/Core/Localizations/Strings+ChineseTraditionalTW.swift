@@ -745,6 +745,8 @@ extension Strings {
         monitorPanelConfigHint: "開啟某個模組，以選擇要顯示的內容。",
         monitorOrderSection: "區段順序",
         monitorOrderHint: "拖曳以重新排列面板區段，按一下眼睛圖示可顯示或隱藏各區段。",
+        panelShowBrandMark: "顯示 Vorssaint 標誌",
+        panelShowFooterActions: "顯示「設定」與「結束」按鈕",
         obStepPanelTitle: "面板中顯示的內容",
         obStepPanelBody: "開啟每個模組，精確選擇按一下圖示時顯示的內容。",
         obStepPanelNavigationTitle: "區段式面板",

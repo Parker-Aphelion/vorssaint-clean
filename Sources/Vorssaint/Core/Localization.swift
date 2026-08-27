@@ -880,6 +880,8 @@ struct Strings {
     let monitorPanelConfigHint: String
     let monitorOrderSection: String
     let monitorOrderHint: String
+    let panelShowBrandMark: String
+    let panelShowFooterActions: String
     let obStepPanelTitle: String
     let obStepPanelBody: String
     let obStepPanelNavigationTitle: String
@@ -1817,6 +1819,8 @@ extension Strings {
         monitorPanelConfigHint: "Abra um bloco para escolher o que ele mostra.",
         monitorOrderSection: "Ordem das seções",
         monitorOrderHint: "Arraste para reordenar as seções do painel e use o olho para mostrar ou ocultar cada uma.",
+        panelShowBrandMark: "Mostrar o logotipo do Vorssaint",
+        panelShowFooterActions: "Mostrar os botões Ajustes e Sair",
         obStepPanelTitle: "O que aparece no painel",
         obStepPanelBody: "Abra cada bloco e escolha exatamente o que mostrar quando você clica no ícone.",
         obStepPanelNavigationTitle: "Painel por seções",
@@ -2747,6 +2751,8 @@ extension Strings {
         monitorPanelConfigHint: "Open a block to choose what it shows.",
         monitorOrderSection: "Section order",
         monitorOrderHint: "Drag to reorder the panel sections and use the eye to show or hide each one.",
+        panelShowBrandMark: "Show Vorssaint logo",
+        panelShowFooterActions: "Show Settings and Quit buttons",
         obStepPanelTitle: "What's in the panel",
         obStepPanelBody: "Open each block and pick exactly what shows when you click the icon.",
         obStepPanelNavigationTitle: "Section-based panel",

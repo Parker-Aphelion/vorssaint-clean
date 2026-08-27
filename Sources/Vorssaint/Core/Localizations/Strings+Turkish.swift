@@ -744,6 +744,8 @@ extension Strings {
         monitorPanelConfigHint: "Ne göstereceğini seçmek için bir blok aç.",
         monitorOrderSection: "Bölüm sırası",
         monitorOrderHint: "Panel bölümlerini yeniden sıralamak için sürükle ve her birini göstermek veya gizlemek için göz simgesini kullan.",
+        panelShowBrandMark: "Vorssaint logosunu göster",
+        panelShowFooterActions: "Ayarlar ve Çık düğmelerini göster",
         obStepPanelTitle: "Panelde neler var",
         obStepPanelBody: "Her bloğu aç ve simgeye tıkladığında tam olarak ne görüneceğini seç.",
         obStepPanelNavigationTitle: "Bölüm tabanlı panel",
