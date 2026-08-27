@@ -189,7 +189,7 @@ struct MenuPanelView: View {
             }
         }
         .padding(MenuPanelChromeLayout.panelPadding)
-        .frame(width: 332, height: navigablePanelHeight)
+        .frame(width: 332, height: navigablePanelHeight, alignment: .topLeading)
         .panelGlassSurface()
     }
 
@@ -215,7 +215,7 @@ struct MenuPanelView: View {
             }
         }
         .padding(MenuPanelChromeLayout.panelPadding)
-        .frame(width: 332, height: metricPanelHeight)
+        .frame(width: 332, height: metricPanelHeight, alignment: .topLeading)
         .panelGlassSurface()
     }
 
