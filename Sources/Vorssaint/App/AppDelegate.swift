@@ -450,6 +450,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private var popoverAnchor: PanelAnchor?
     private var lastGoodPanelAnchor: PanelAnchor?
     private var popoverDriftObservers: [NSObjectProtocol] = []
+    private var popoverDriftCorrectionScheduled = false
 
     /// How long a captured click still counts as "where the icon is".
     private static let statusClickFreshness: TimeInterval = 0.5
@@ -576,8 +577,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
                 forName: name, object: window, queue: .main
             ) { [weak self, weak window] _ in
                 guard let window else { return }
-                self?.applyPopoverDriftFrame(window)
+                self?.schedulePopoverDriftCorrection(for: window)
             })
+        }
+    }
+
+    /// AppKit posts its resize notification before it has necessarily completed
+    /// the popover's own final placement. Correct on the next main-loop turn so
+    /// a section's changed height cannot move the arrow or top edge afterward.
+    private func schedulePopoverDriftCorrection(for window: NSWindow) {
+        guard !popoverDriftCorrectionScheduled else { return }
+        popoverDriftCorrectionScheduled = true
+        DispatchQueue.main.async { [weak self, weak window] in
+            guard let self else { return }
+            self.popoverDriftCorrectionScheduled = false
+            guard self.popover.isShown,
+                  let window,
+                  window === self.popover.contentViewController?.view.window else { return }
+            self.applyPopoverDriftFrame(window)
         }
     }
 
@@ -611,6 +628,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         popoverDriftObservers.forEach { NotificationCenter.default.removeObserver($0) }
         popoverDriftObservers.removeAll()
         popoverAnchor = nil
+        popoverDriftCorrectionScheduled = false
         // Nothing is measuring itself against a screen with the panel closed,
         // and holding one keeps a display object alive for no reason.
         PanelInteractionState.shared.anchorScreen = nil
