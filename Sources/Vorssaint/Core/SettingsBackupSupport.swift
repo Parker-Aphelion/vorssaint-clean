@@ -55,6 +55,8 @@ enum SettingsBackupSupport {
         DefaultsKey.panelDiskOrder,
         DefaultsKey.panelPowerOrder,
         DefaultsKey.panelCollapsedSections,
+        DefaultsKey.statusItemContextMenuOrder,
+        DefaultsKey.statusItemContextMenuHiddenItems,
         DefaultsKey.quickLauncherItemOrder,
         // Experience flags: a restored Mac must not replay onboarding or the
         // feature intros the user has already been through.
@@ -192,6 +194,10 @@ enum SettingsBackupSupport {
     static func valueLooksRight(_ key: String, _ value: Any) -> Bool {
         if key == DefaultsKey.scratchpadDocument {
             return ScratchpadDocument.decoded(value as? Data, defaultName: "Scratchpad") != nil
+        }
+        if key == DefaultsKey.statusItemContextMenuOrder
+            || key == DefaultsKey.statusItemContextMenuHiddenItems {
+            return value is String
         }
         guard let expected = Defaults.registeredDefaults[key] else {
             // Not a registered setting, so there is nothing to compare

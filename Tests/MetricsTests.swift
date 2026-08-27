@@ -2532,6 +2532,21 @@ struct MetricsTests {
         expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.panelShowBrandMark)
                 && SettingsBackupSupport.exportKeys().contains(DefaultsKey.panelShowFooterActions),
                "panel appearance preferences are included in settings backups")
+        expect(registeredDefaults[DefaultsKey.statusItemContextMenuOrder] == nil
+                && registeredDefaults[DefaultsKey.statusItemContextMenuHiddenItems] == nil,
+               "right-click menu layout uses absence for its canonical all-visible state")
+        expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.statusItemContextMenuOrder)
+                && SettingsBackupSupport.exportKeys().contains(DefaultsKey.statusItemContextMenuHiddenItems),
+               "right-click menu order and visibility are included in settings backups")
+        expect(SettingsBackupSupport.valueLooksRight(DefaultsKey.statusItemContextMenuOrder,
+                                                      "settings,quit")
+                && SettingsBackupSupport.valueLooksRight(DefaultsKey.statusItemContextMenuHiddenItems,
+                                                          "about")
+                && !SettingsBackupSupport.valueLooksRight(DefaultsKey.statusItemContextMenuOrder,
+                                                           ["settings", "quit"])
+                && !SettingsBackupSupport.valueLooksRight(DefaultsKey.statusItemContextMenuHiddenItems,
+                                                           true),
+               "unregistered right-click menu preferences still require string backup values")
         let navigableNavigationHeight = MenuPanelChromeLayout.sectionNavigationHeight
         let metricNavigationHeight = MenuPanelChromeLayout.metricNavigationHeight
         expect(MenuPanelChromeLayout.height(navigationHeight: navigableNavigationHeight,
@@ -3540,6 +3555,75 @@ struct MetricsTests {
                                                 defaultOrder: ["homebrew", "media", "uninstaller", "cleanURL", "cleaning"])
                == ["uninstaller", "homebrew", "media", "cleanURL", "cleaning"],
                "panel item order keeps saved valid items first and appends defaults")
+
+        // MARK: Menu bar icon right-click menu layout
+
+        let contextMenuDefaultOrder = StatusItemContextMenuLayout.defaultOrder
+        expect(contextMenuDefaultOrder.map(\.rawValue) == [
+            "keepAwakeToggle", "activateFor", "cleaningMode", "settings", "about",
+            "uninstaller", "shelf", "checkForUpdates", "quit",
+        ], "right-click menu default order matches the existing menu")
+        expect(!StatusItemContextMenuItemID.settings.canHide
+                && !StatusItemContextMenuItemID.quit.canHide
+                && StatusItemContextMenuItemID.allCases
+                    .filter { $0 != .settings && $0 != .quit }
+                    .allSatisfy(\.canHide),
+               "Settings and Quit are the only right-click menu items that cannot hide")
+        expect(StatusItemContextMenuLayout.separatorIndexes(for: contextMenuDefaultOrder)
+                == IndexSet([3, 8]),
+               "the default right-click order separates actions, app commands and Quit")
+        expect(StatusItemContextMenuLayout.separatorIndexes(for: [.settings, .quit])
+                == IndexSet(integer: 1),
+               "hiding every optional item leaves one divider between Settings and Quit")
+        expect(StatusItemContextMenuLayout.separatorIndexes(for: [
+            .settings, .about, .keepAwakeToggle, .activateFor, .quit,
+        ]) == IndexSet([2, 4]),
+               "custom right-click order inserts dividers only at semantic group transitions")
+        expect(StatusItemContextMenuLayout.separatorIndexes(for: [.settings, .about]).isEmpty
+                && StatusItemContextMenuLayout.separatorIndexes(for: []).isEmpty,
+               "one semantic group and an empty menu produce no orphaned dividers")
+
+        let contextMenuSuite = "vorss.tests.status-item-context-menu"
+        if let contextMenuDefaults = UserDefaults(suiteName: contextMenuSuite) {
+            contextMenuDefaults.removePersistentDomain(forName: contextMenuSuite)
+            expect(StatusItemContextMenuLayout.order(defaults: contextMenuDefaults)
+                   == contextMenuDefaultOrder,
+                   "an absent right-click order uses the canonical order")
+
+            contextMenuDefaults.set("quit,about,about,unknown,settings",
+                                    forKey: DefaultsKey.statusItemContextMenuOrder)
+            let repairedOrder = StatusItemContextMenuLayout.order(defaults: contextMenuDefaults)
+            expect(Array(repairedOrder.prefix(3)) == [.quit, .about, .settings]
+                    && Set(repairedOrder) == Set(contextMenuDefaultOrder)
+                    && repairedOrder.count == contextMenuDefaultOrder.count,
+                   "right-click order drops unknown duplicates and appends every missing item")
+
+            StatusItemContextMenuLayout.setOrder([.quit, .settings, .quit],
+                                                 defaults: contextMenuDefaults)
+            expect(Array(StatusItemContextMenuLayout.order(defaults: contextMenuDefaults).prefix(2))
+                   == [.quit, .settings],
+                   "mandatory right-click items remain movable and duplicate-free")
+
+            contextMenuDefaults.set("settings,quit,about,about,unknown",
+                                    forKey: DefaultsKey.statusItemContextMenuHiddenItems)
+            expect(StatusItemContextMenuLayout.hiddenItems(defaults: contextMenuDefaults) == [.about]
+                    && StatusItemContextMenuLayout.isShown(.settings, defaults: contextMenuDefaults)
+                    && StatusItemContextMenuLayout.isShown(.quit, defaults: contextMenuDefaults)
+                    && !StatusItemContextMenuLayout.isShown(.about, defaults: contextMenuDefaults),
+                   "corrupt hidden values cannot hide Settings or Quit")
+
+            StatusItemContextMenuLayout.setHiddenItems(Set(StatusItemContextMenuItemID.allCases),
+                                                       defaults: contextMenuDefaults)
+            expect(StatusItemContextMenuLayout.hiddenItems(defaults: contextMenuDefaults)
+                   == Set(StatusItemContextMenuItemID.allCases.filter(\.canHide)),
+                   "writing the hidden set strips the two mandatory items")
+            expect(StatusItemContextMenuLayout.visibleOrder(defaults: contextMenuDefaults)
+                   == [.quit, .settings],
+                   "users can hide every optional item while preserving their custom mandatory order")
+            contextMenuDefaults.removePersistentDomain(forName: contextMenuSuite)
+        } else {
+            expect(false, "right-click menu test defaults suite is available")
+        }
 
         // MARK: Window layout shortcut resolution (issue #169)
 
@@ -8409,6 +8493,15 @@ struct MetricsTests {
                    && !strings.panelShowBrandMark.contains("—")
                    && !strings.panelShowFooterActions.contains("—"),
                    "\(prefix) panel appearance labels are present without em dash")
+            let contextMenuLayoutStrings = [
+                strings.statusItemContextMenuSection,
+                strings.statusItemContextMenuOrderHint,
+                strings.statusItemContextMenuHideItem,
+                strings.statusItemContextMenuShowItem,
+                strings.statusItemContextMenuAlwaysShown,
+            ]
+            expect(contextMenuLayoutStrings.allSatisfy { !$0.isEmpty && !$0.contains("—") },
+                   "\(prefix) right-click menu layout labels are present without em dash")
             expectFormat(strings.homebrewConfirmInstallBodyFormat, ["@"], "\(prefix) Homebrew install format")
             expectFormat(strings.homebrewConfirmUninstallBodyFormat, ["@"], "\(prefix) Homebrew uninstall format")
             expectFormat(strings.homebrewConfirmUpgradeBodyFormat, ["@"], "\(prefix) Homebrew upgrade format")

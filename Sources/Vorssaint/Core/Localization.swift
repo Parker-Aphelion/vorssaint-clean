@@ -880,6 +880,11 @@ struct Strings {
     let monitorPanelConfigHint: String
     let monitorOrderSection: String
     let monitorOrderHint: String
+    let statusItemContextMenuSection: String
+    let statusItemContextMenuOrderHint: String
+    let statusItemContextMenuHideItem: String
+    let statusItemContextMenuShowItem: String
+    let statusItemContextMenuAlwaysShown: String
     let panelShowBrandMark: String
     let panelShowFooterActions: String
     let obStepPanelTitle: String
@@ -1819,6 +1824,11 @@ extension Strings {
         monitorPanelConfigHint: "Abra um bloco para escolher o que ele mostra.",
         monitorOrderSection: "Ordem das seções",
         monitorOrderHint: "Arraste para reordenar as seções do painel e use o olho para mostrar ou ocultar cada uma.",
+        statusItemContextMenuSection: "Menu do clique direito",
+        statusItemContextMenuOrderHint: "Arraste para reordenar e use o olho para mostrar ou ocultar itens. Ajustes e Sair ficam sempre visíveis.",
+        statusItemContextMenuHideItem: "Ocultar do menu do clique direito",
+        statusItemContextMenuShowItem: "Mostrar no menu do clique direito",
+        statusItemContextMenuAlwaysShown: "Sempre visível",
         panelShowBrandMark: "Mostrar o logotipo do Vorssaint",
         panelShowFooterActions: "Mostrar os botões Ajustes e Sair",
         obStepPanelTitle: "O que aparece no painel",
@@ -2751,6 +2761,11 @@ extension Strings {
         monitorPanelConfigHint: "Open a block to choose what it shows.",
         monitorOrderSection: "Section order",
         monitorOrderHint: "Drag to reorder the panel sections and use the eye to show or hide each one.",
+        statusItemContextMenuSection: "Right-click menu",
+        statusItemContextMenuOrderHint: "Drag to reorder and use the eye to show or hide items. Settings and Quit are always shown.",
+        statusItemContextMenuHideItem: "Hide from right-click menu",
+        statusItemContextMenuShowItem: "Show in right-click menu",
+        statusItemContextMenuAlwaysShown: "Always shown",
         panelShowBrandMark: "Show Vorssaint logo",
         panelShowFooterActions: "Show Settings and Quit buttons",
         obStepPanelTitle: "What's in the panel",
