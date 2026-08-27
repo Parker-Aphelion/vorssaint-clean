@@ -466,17 +466,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         /// False when it came from a fallback, so a guess never becomes the
         /// remembered good anchor for the rest of the session.
         let trusted: Bool
-        /// True when the anchor is known to beat the status item's frame from
-        /// the moment the panel opens, because a physical click landed clearly
-        /// outside that frame. Otherwise the anchor waits: while the frame
-        /// still describes a spot in the menu bar the system places the panel
-        /// better than any remembered point can, following the icon as the bar
-        /// shuffles items around it.
-        let overridesSoundFrame: Bool
-        /// The button the anchor was taken from, so "does the frame still
-        /// describe the bar?" asks the item the panel is actually hanging off
-        /// (a metric item, not necessarily the main icon).
-        weak var button: NSStatusBarButton?
     }
 
     private func captureStatusClick() {
@@ -521,16 +510,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         return button.window?.screen ?? NSScreen.withMenuBar
     }
 
-    /// Whether the item the panel hangs off still reports a frame that sits in
-    /// a menu bar. While it does, the system's own placement wins and the
-    /// remembered anchor stays out of the way; once it stops (a bar that hides
-    /// itself parks the window out of the visible area) the anchor takes over.
-    private func frameStillDescribesMenuBar(_ anchor: PanelAnchor) -> Bool {
-        guard let frame = anchor.button?.window?.frame else { return false }
-        return StatusItemAnchorSupport.isTrustworthyStatusFrame(
-            frame, screenFrames: NSScreen.screens.map(\.frame))
-    }
-
     /// The spot the panel must hold while it is open, decided at the moment it
     /// opens: the user has just clicked the icon, so the menu bar is up and its
     /// frame is at its most trustworthy. Everything after that (a bar that
@@ -545,19 +524,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         if frameIsSound, statusFrame != nil {
             // Where the popover has just been placed is the anchor: with a
             // sound frame the system put it exactly right, including its own
-            // clamping near a screen edge, so holding that spot changes
-            // nothing about how an open panel looks. It is held in reserve,
-            // though, and only applied once that frame stops describing the
-            // bar. A fresh physical click that clearly disagrees with the
-            // frame is the stranded item instead, and then the click marks
-            // where the icon really is and outranks the frame right away.
+            // clamping near a screen edge. Hold that position across all
+            // in-place content resizes. A fresh physical click that clearly
+            // disagrees with the frame is the stranded item instead, and then
+            // the click marks where the icon really is.
             let corrected = correctedPopoverMidX(for: button)
             return PanelAnchor(midX: corrected ?? window.frame.midX,
                                top: window.frame.maxY,
                                screen: screen,
-                               trusted: true,
-                               overridesSoundFrame: corrected != nil,
-                               button: button)
+                               trusted: true)
         }
         // The frame points nowhere, so the panel it just positioned is nowhere
         // either. Best available, in order: the spot this session last held, a
@@ -571,21 +546,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
            let rememberedScreen = remembered.screen,
            rememberedScreen.isStillAttached,
            rememberedScreen.displayID == screen?.displayID {
-            // Reused for an item whose frame is already pointing nowhere, so it
-            // has to act now rather than wait for a frame that will not recover.
             return PanelAnchor(midX: remembered.midX, top: remembered.top,
-                               screen: screen, trusted: true,
-                               overridesSoundFrame: true, button: button)
+                               screen: screen, trusted: true)
         }
         lastGoodPanelAnchor = nil
         let visible = screen?.visibleFrame ?? window.frame
         if let click = lastStatusClick,
            Date().timeIntervalSince(click.at) < Self.statusClickFreshness {
             return PanelAnchor(midX: click.x, top: visible.maxY, screen: screen,
-                               trusted: false, overridesSoundFrame: true, button: button)
+                               trusted: false)
         }
         return PanelAnchor(midX: visible.maxX, top: visible.maxY, screen: screen,
-                           trusted: false, overridesSoundFrame: true, button: button)
+                           trusted: false)
     }
 
     /// Slides the popover window so its center (and thus the arrow tip, which
@@ -611,11 +583,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
     private func applyPopoverDriftFrame(_ window: NSWindow) {
         guard let anchor = popoverAnchor,
-              // A healthy bar places the panel better than the anchor can, and
-              // keeps it under an icon that shifts as items come and go, so the
-              // anchor stays dormant until that frame stops meaning anything.
-              anchor.overridesSoundFrame || !frameStillDescribesMenuBar(anchor),
               let visible = anchorVisibleFrame(anchor, window: window) else { return }
+        // AppKit repositions an open popover whenever its content height changes.
+        // That makes section switches visibly move the arrow even when the
+        // status-item frame is healthy. The initial frame was placed and clamped
+        // by AppKit, so keep that exact position for the rest of this presentation.
         let frame = window.frame
         let target = StatusItemAnchorSupport.pinnedPanelFrame(size: frame.size,
                                                               anchorMidX: anchor.midX,
