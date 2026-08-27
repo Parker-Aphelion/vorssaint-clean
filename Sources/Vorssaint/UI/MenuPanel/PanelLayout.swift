@@ -251,18 +251,42 @@ struct PanelSection<Content: View>: View {
                 Spacer(minLength: 0)
             }
             if supportsEditing {
-                if isEditing, let resetAction {
-                    resetButton(resetAction)
-                        .opacity(editButtonVisible ? 1 : 0)
-                        .disabled(!editButtonVisible)
-                        .accessibilityHidden(!editButtonVisible)
-                }
-                editButton
-                    .opacity(editButtonVisible ? 1 : 0)
-                    .disabled(!editButtonVisible)
-                    .accessibilityHidden(!editButtonVisible)
+                Color.clear
+                    .frame(width: editControlsWidth, height: headerContentHeight)
             }
         }
+        .overlay(alignment: .trailing) {
+            if supportsEditing {
+                editControls
+            }
+        }
+    }
+
+    private var editControlsWidth: CGFloat {
+        editIconWidth + (resetAction == nil ? 0 : editControlSpacing + doneButtonWidth)
+    }
+
+    private var headerContentHeight: CGFloat { 18 }
+    private var editIconWidth: CGFloat { 22 }
+    private var doneButtonWidth: CGFloat { 52 }
+    private var editControlSpacing: CGFloat { 6 }
+
+    private var editControls: some View {
+        HStack(spacing: editControlSpacing) {
+            if isEditing, let resetAction {
+                resetButton(resetAction)
+            }
+            Spacer(minLength: 0)
+            editButton
+        }
+        .frame(width: editControlsWidth, height: headerContentHeight, alignment: .trailing)
+        // The fixed header stays at its normal 18-point height. Raising the
+        // taller edit controls by three points keeps their visible gaps above
+        // and below the row balanced without moving the section content.
+        .offset(y: isEditing ? -3 : 0)
+        .opacity(editButtonVisible ? 1 : 0)
+        .disabled(!editButtonVisible)
+        .accessibilityHidden(!editButtonVisible)
     }
 
     private var collapseIcon: some View {
@@ -278,13 +302,12 @@ struct PanelSection<Content: View>: View {
                 Label("OK", systemImage: "checkmark")
                     .font(.system(size: 10.5, weight: .bold))
                     .labelStyle(.titleAndIcon)
-                    .padding(.horizontal, 8)
-                    .frame(height: 24)
+                    .frame(width: doneButtonWidth, height: 24)
                     .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             } else {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 11, weight: .semibold))
-                    .frame(width: 22, height: 18)
+                    .frame(width: editIconWidth, height: 18)
                     .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
         }
