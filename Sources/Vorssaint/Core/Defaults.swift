@@ -84,6 +84,8 @@ enum DefaultsKey {
     static let mixerHiddenApps = "mixerHiddenApps"        // [persistence id: display name] kept out of the mixer list (issue #300)
     static let mixerLowerVolumeOnHeadphonesDisconnect = "mixerLowerVolumeOnHeadphonesDisconnect"
     static let mixerHeadphonesDisconnectVolumePercent = "mixerHeadphonesDisconnectVolumePercent"
+    static let panelMixerShowHeadphoneDisconnectControl = "panelMixerShowHeadphoneDisconnectControl"
+    static let panelMixerShowSystemSoundsControl = "panelMixerShowSystemSoundsControl"
     static let soundOutputSwitcherEnabled = "soundOutputSwitcherEnabled"
     static let soundOutputSwitcherShortcut = "soundOutputSwitcherShortcut"
     static let soundOutputSwitcherDeviceUIDs = "soundOutputSwitcherDeviceUIDs"
@@ -208,6 +210,7 @@ enum DefaultsKey {
     // Show/hide whole panel sections that have no monitorShow* key of their own.
     static let panelShowKeepAwake = "panelShowKeepAwake"
     static let panelShowBrightness = "panelShowBrightness"
+    static let panelBrightnessShowOSDControl = "panelBrightnessShowOSDControl"
     static let panelShowUtilities = "panelShowUtilities"
     static let panelShowControls = "panelShowControls"
     static let panelShowToggles = "panelShowToggles"
@@ -787,6 +790,8 @@ enum Defaults {
         DefaultsKey.mixerShowFinder: true,
         DefaultsKey.mixerLowerVolumeOnHeadphonesDisconnect: false,
         DefaultsKey.mixerHeadphonesDisconnectVolumePercent: defaultMixerHeadphonesDisconnectVolumePercent,
+        DefaultsKey.panelMixerShowHeadphoneDisconnectControl: true,
+        DefaultsKey.panelMixerShowSystemSoundsControl: true,
         DefaultsKey.soundOutputSwitcherEnabled: false,
         DefaultsKey.soundOutputSwitcherShortcut: GlobalShortcut.soundOutputSwitcherDefault.storageValue,
         // Finder never benefits from being "quit" (it just relaunches), so
@@ -902,6 +907,7 @@ enum Defaults {
         DefaultsKey.panelControlFilesExpanded: false,
         DefaultsKey.panelShowKeepAwake: true,
         DefaultsKey.panelShowBrightness: true,
+        DefaultsKey.panelBrightnessShowOSDControl: true,
         DefaultsKey.panelShowUtilities: true,
         DefaultsKey.panelShowControls: true,
         DefaultsKey.panelShowToggles: true,

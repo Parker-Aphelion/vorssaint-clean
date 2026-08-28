@@ -2163,6 +2163,14 @@ struct MetricsTests {
                "3.3.2 highlights tour includes curated real captures for screenshot palette and clipboard")
         expect(registeredDefaults[DefaultsKey.mixerLowerVolumeOnHeadphonesDisconnect] as? Bool == false,
                "headphone disconnect volume lowering is opt-in")
+        expect(registeredDefaults[DefaultsKey.panelMixerShowHeadphoneDisconnectControl] as? Bool == true,
+               "headphone disconnect protection control is shown in the mixer by default")
+        expect(registeredDefaults[DefaultsKey.panelMixerShowSystemSoundsControl] as? Bool == true,
+               "system sounds output control is shown in the mixer by default")
+        expect([DefaultsKey.panelMixerShowHeadphoneDisconnectControl,
+                DefaultsKey.panelMixerShowSystemSoundsControl].allSatisfy {
+                    SettingsBackupSupport.exportKeys().contains($0)
+                }, "mixer optional-row visibility is included in settings backups")
         expect(registeredDefaults[DefaultsKey.mixerHeadphonesDisconnectVolumePercent] as? Int
                == Defaults.defaultMixerHeadphonesDisconnectVolumePercent,
                "headphone disconnect protection starts at an audible volume, never at silence")
@@ -2504,6 +2512,10 @@ struct MetricsTests {
                "Keep Awake panel section is shown by default")
         expect(registeredDefaults[DefaultsKey.panelShowBrightness] as? Bool == true,
                "brightness panel section is shown by default once the feature is on")
+        expect(registeredDefaults[DefaultsKey.panelBrightnessShowOSDControl] as? Bool == true,
+               "brightness adjustment control is shown in the panel by default")
+        expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.panelBrightnessShowOSDControl),
+               "brightness adjustment control visibility is included in settings backups")
         expect(registeredDefaults[DefaultsKey.brightnessControlEnabled] as? Bool == false,
                "brightness control arrives switched off")
         expect(registeredDefaults[DefaultsKey.brightnessKeysEnabled] as? Bool == false,

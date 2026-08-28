@@ -73,6 +73,7 @@ struct MenuPanelView: View {
     @AppStorage(DefaultsKey.panelShowFanControl) private var showFanControl = true
     @AppStorage(DefaultsKey.panelShowKeepAwake) private var showKeepAwake = true
     @AppStorage(DefaultsKey.panelShowBrightness) private var showBrightness = true
+    @AppStorage(DefaultsKey.panelBrightnessShowOSDControl) private var showBrightnessOSDControl = true
     @AppStorage(DefaultsKey.brightnessControlEnabled) private var brightnessEnabled = false
     @AppStorage(DefaultsKey.panelShowUtilities) private var showUtilities = true
     @AppStorage(DefaultsKey.panelShowControls) private var showControls = true
@@ -174,15 +175,21 @@ struct MenuPanelView: View {
             if showBrandMark {
                 header
             }
-            sectionNavigation
+            VStack(alignment: .leading,
+                   spacing: MenuPanelChromeLayout.spacing
+                       - PanelSectionLayout.editControlsTopOverflow) {
+                sectionNavigation
 
-            OverlayScrollView(measuredHeight: $navigableContentHeight) {
-                VStack(alignment: .leading, spacing: 12) {
-                    section(for: activeSection, collapsible: false)
+                OverlayScrollView(measuredHeight: $navigableContentHeight) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        section(for: activeSection, collapsible: false)
+                    }
+                    .frame(width: 308)
+                    .padding(.top, PanelSectionLayout.editControlsTopOverflow)
                 }
-                .frame(width: 308)
+                .frame(width: 308,
+                       height: navigableScrollHeight + PanelSectionLayout.editControlsTopOverflow)
             }
-            .frame(width: 308, height: navigableScrollHeight)
 
             if showFooterActions {
                 footer
@@ -237,12 +244,19 @@ struct MenuPanelView: View {
     }
 
     private var navigableScrollHeight: CGFloat {
-        let measured = navigableContentHeight == 0 ? estimatedNavigableContentHeight : navigableContentHeight
+        let measured = navigableContentHeight == 0
+            ? estimatedNavigableContentHeight
+            : max(0, navigableContentHeight - PanelSectionLayout.editControlsTopOverflow)
         return min(measured, max(80, maxHeight - navigableChromeHeight))
     }
 
     private var navigablePanelHeight: CGFloat {
-        min(maxHeight, max(220, navigableScrollHeight + navigableChromeHeight))
+        min(maxHeight, max(navigablePanelMinimumHeight,
+                           navigableScrollHeight + navigableChromeHeight))
+    }
+
+    private var navigablePanelMinimumHeight: CGFloat {
+        activeSection == .brightness && !showBrightnessOSDControl ? 0 : 220
     }
 
     private var metricScrollHeight: CGFloat {
@@ -1912,9 +1926,6 @@ struct UtilityActionButton: View {
             }
             Spacer(minLength: 0)
             if isEditing, let visibility {
-                if !visibility.wrappedValue {
-                    PanelHiddenBadge()
-                }
                 PanelInlineHideButton(isVisible: visibility)
             } else {
                 if let shortcutHint {
@@ -2048,9 +2059,6 @@ struct PanelToggleRow: View {
     @ViewBuilder
     private var trailingControl: some View {
         if isEditing, let visibility {
-            if !visibility.wrappedValue {
-                PanelHiddenBadge()
-            }
             PanelInlineHideButton(isVisible: visibility)
         } else {
             Toggle("", isOn: $isOn)

@@ -6,6 +6,13 @@ import UniformTypeIdentifiers
 
 protocol PanelOrderItem: RawRepresentable, CaseIterable, Hashable where RawValue == String {}
 
+enum PanelSectionLayout {
+    static let contentSpacing: CGFloat = 8
+    static let editControlsHeight: CGFloat = 24
+    /// Centers the action row between the navigation capsule and content card.
+    static let editControlsTopOverflow: CGFloat = 7.5
+}
+
 /// The major, user-customizable sections of the menu panel. Raw values are the
 /// stable identifiers persisted in the saved order and the collapsed set, so
 /// renaming a case would orphan a user's stored layout — keep them stable.
@@ -225,7 +232,7 @@ struct PanelSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: contentSpacing) {
+        VStack(alignment: .leading, spacing: PanelSectionLayout.contentSpacing) {
             header
 
             if !collapsible || !collapsed {
@@ -251,21 +258,21 @@ struct PanelSection<Content: View>: View {
                 Spacer(minLength: 0)
             }
             if supportsEditing {
+                Color.clear
+                    .frame(width: editControlsWidth, height: 0)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if supportsEditing {
                 editControls
             }
         }
     }
 
-    /// Editing sections need a 24-point action lane for the Done button. The
-    /// six-point reduction below preserves the original title-to-content
-    /// distance, so changing edit state cannot resize the section or popover.
-    private var contentSpacing: CGFloat { supportsEditing ? 2 : 8 }
-
     private var editControlsWidth: CGFloat {
         editIconWidth + (resetAction == nil ? 0 : editControlSpacing + doneButtonWidth)
     }
 
-    private var headerContentHeight: CGFloat { 24 }
     private var editIconWidth: CGFloat { 22 }
     private var doneButtonWidth: CGFloat { 52 }
     private var editControlSpacing: CGFloat { 6 }
@@ -278,8 +285,10 @@ struct PanelSection<Content: View>: View {
             Spacer(minLength: 0)
             editButton
         }
-        .frame(width: editControlsWidth, height: headerContentHeight, alignment: .topTrailing)
-        .offset(y: isEditing ? -8 : 0)
+        .frame(width: editControlsWidth,
+               height: PanelSectionLayout.editControlsHeight,
+               alignment: .topTrailing)
+        .offset(y: isEditing ? -PanelSectionLayout.editControlsTopOverflow : 0)
         .opacity(editButtonVisible ? 1 : 0)
         .disabled(!editButtonVisible)
         .accessibilityHidden(!editButtonVisible)
@@ -303,6 +312,8 @@ struct PanelSection<Content: View>: View {
             } else {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 11, weight: .semibold))
+                    // Bottom-align the glyph with the section title without moving its hit target.
+                    .offset(y: -3.5)
                     .frame(width: editIconWidth, height: 18)
                     .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
@@ -414,34 +425,18 @@ struct PanelInlineHideButton: View {
         Button {
             isVisible.toggle()
         } label: {
-            Image(systemName: isVisible ? "eye.slash.fill" : "eye.fill")
+            Image(systemName: isVisible ? "eye.fill" : "eye.slash.fill")
                 .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(isVisible ? Color.secondary : Color.accentColor)
+                .foregroundStyle(isVisible ? Color.accentColor : Color.secondary)
                 .frame(width: 24, height: 22)
                 .background(
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill((isVisible ? Color.primary : Color.accentColor).opacity(0.10))
+                        .fill((isVisible ? Color.accentColor : Color.primary).opacity(0.10))
                 )
         }
         .buttonStyle(.plain)
         .help(isVisible ? l10n.s.panelHideItem : l10n.s.panelShowItem)
         .accessibilityLabel(isVisible ? l10n.s.panelHideItem : l10n.s.panelShowItem)
-    }
-}
-
-struct PanelHiddenBadge: View {
-    @ObservedObject private var l10n = L10n.shared
-
-    var body: some View {
-        Label(l10n.s.panelHiddenItem, systemImage: "eye.slash.fill")
-            .font(.system(size: 9.5, weight: .bold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(
-                Capsule()
-                    .fill(Color.primary.opacity(0.08))
-            )
     }
 }
 
@@ -461,7 +456,6 @@ struct PanelHiddenItemRow: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer(minLength: 0)
-            PanelHiddenBadge()
             PanelInlineHideButton(isVisible: $isVisible)
         }
         .padding(.vertical, 3)

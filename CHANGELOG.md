@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- General settings can now reorder the menu bar icon's right-click menu and hide
+  optional items; Settings and Quit remain available.
+- The menu panel can now hide its Vorssaint logo and Settings and Quit buttons.
+- Display and Volume Mixer edit controls can now hide “Show brightness when
+  adjusting,” System Sounds and “Lower volume when headphones disconnect.”
+
+### Changed
+- Panel appearance, optional-row visibility and right-click menu layouts now
+  travel with settings backups.
+
+### Fixed
+- Menu panel edit controls no longer change section spacing, visibility icons now
+  match their shown or hidden state, and compact sections release unused space
+  when optional rows are hidden.
+
 ## [3.3.2] - 2026-08-20
 
 ### Summary
