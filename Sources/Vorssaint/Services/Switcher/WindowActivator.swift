@@ -174,7 +174,7 @@ enum WindowActivator {
     }
 
     static func focusedWindowID(for pid: pid_t) -> CGWindowID? {
-        guard Permissions.shared.accessibility else { return nil }
+        guard AXIsProcessTrusted() else { return nil }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.35)
         var value: CFTypeRef?
@@ -197,6 +197,60 @@ enum WindowActivator {
         AXUIElementSetMessagingTimeout(axApp, 0.35)
         guard let axWindow = axElement(windowID: windowID, in: axApp) else { return nil }
         return minimizedState(of: axWindow)
+    }
+
+    /// Moves a window's top-left corner to a global Accessibility point.
+    ///
+    /// Our own windows are refused rather than special-cased: reading this
+    /// process's own Accessibility tree from the main thread is the one call
+    /// that can deadlock, and Vorssaint has no Dock icon to drag a preview
+    /// from in the first place.
+    @discardableResult
+    static func setWindowOrigin(_ origin: CGPoint, windowID: CGWindowID, pid: pid_t) -> Bool {
+        guard Permissions.shared.accessibility,
+              pid != ProcessInfo.processInfo.processIdentifier else { return false }
+        let axApp = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(axApp, 0.35)
+        guard let axWindow = axElement(windowID: windowID, in: axApp) else { return false }
+        var origin = origin
+        guard let value = AXValueCreate(.cgPoint, &origin) else { return false }
+        return AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, value) == .success
+    }
+
+    /// Puts a window where a drag dropped it. Every window takes the same four
+    /// steps in the same order whatever state it was in, because a drop that
+    /// stops to check on a minimized window feels like a different gesture from
+    /// a drop that does not. Un-minimizing a window that is already out returns
+    /// immediately, so the step costs one attribute read.
+    ///
+    /// The position goes on before the window is restored: the restore then
+    /// ends at the drop point rather than flying to the window's old place.
+    @discardableResult
+    static func place(_ item: SwitcherItem, origin: CGPoint, pointer: CGPoint) -> Bool {
+        guard Permissions.shared.accessibility,
+              let windowID = item.windowID,
+              item.windowOwnerPID != ProcessInfo.processInfo.processIdentifier
+        else { return false }
+        let pid = item.windowOwnerPID
+
+        if item.isAppHidden {
+            NSRunningApplication(processIdentifier: item.pid)?.unhide()
+        }
+        let placed = setWindowOrigin(origin, windowID: windowID, pid: pid)
+        SpaceWindowBridge.moveToVisibleSpace(windowID, near: pointer)
+        setWindowMinimized(false, windowID: windowID, pid: pid)
+        return placed
+    }
+
+    /// Hands the keyboard to a window a drag just placed. Dropping a window
+    /// somewhere is a request to use it, and the app-level activation that
+    /// follows raises the app without saying which of its windows the user was
+    /// pointing at.
+    static func focusPlacedWindow(_ item: SwitcherItem) {
+        guard let windowID = item.windowID,
+              item.windowOwnerPID != ProcessInfo.processInfo.processIdentifier
+        else { return }
+        SpaceWindowBridge.frontWindow(windowID, ownerPID: item.windowOwnerPID)
     }
 
     @discardableResult
@@ -310,7 +364,7 @@ enum WindowActivator {
     }
 
     private static func activateApp(_ app: NSRunningApplication, allWindows: Bool = true) {
-        NSApp.yieldActivation(to: app)
+        ActivationHandoff.yield(to: app)
         if allWindows {
             if !app.activate(from: NSRunningApplication.current, options: [.activateAllWindows]) {
                 app.activate(options: [.activateAllWindows])
@@ -505,17 +559,16 @@ enum WindowActivator {
         let frontmostPID = reportedFrontmostPID == restore.targetWindowOwnerPID
             ? restore.targetPID
             : reportedFrontmostPID
-        let targetIsMinimized = windowIsMinimized(windowID: restore.windowID,
-                                                  pid: restore.targetWindowOwnerPID)
-        let focusedID = focusedWindowID(for: restore.targetWindowOwnerPID)
-        guard SwitcherSupport.shouldRestoreSourceAfterTargetMinimizeIntent(targetPID: restore.targetPID,
-                                                                           sourcePID: restore.sourcePID,
-                                                                           frontmostPID: frontmostPID,
-                                                                           focusedWindowID: focusedID,
-                                                                           targetWindowID: restore.windowID,
-                                                                           targetIsMinimized: targetIsMinimized,
-                                                                           frontmostMatchesTargetBundle: restore.matchesTargetBundle(frontmostPID),
-                                                                           frontmostCanBeSystemPromotion: allowSystemPromotion) else { return }
+        guard SwitcherSupport.shouldRestoreSourceAfterTargetMinimizeIntent(
+                targetPID: restore.targetPID,
+                sourcePID: restore.sourcePID,
+                frontmostPID: frontmostPID,
+                focusedWindowID: focusedWindowID(for: restore.targetWindowOwnerPID),
+                targetWindowID: restore.windowID,
+                targetIsMinimized: windowIsMinimized(windowID: restore.windowID,
+                                                     pid: restore.targetWindowOwnerPID),
+                frontmostMatchesTargetBundle: restore.matchesTargetBundle(frontmostPID),
+                frontmostCanBeSystemPromotion: allowSystemPromotion) else { return }
         guard activateSource(pid: restore.sourcePID,
                              windowID: restore.sourceWindowID,
                              windowOwnerPID: restore.sourceWindowOwnerPID) else {
@@ -539,7 +592,7 @@ enum WindowActivator {
         if let windowID {
             prepareWindowForActivation(windowID: windowID, pid: windowOwnerPID ?? pid)
         }
-        NSApp.yieldActivation(to: sourceApp)
+        ActivationHandoff.yield(to: sourceApp)
         if !sourceApp.activate(from: NSRunningApplication.current, options: []) {
             sourceApp.activate(options: [])
         }

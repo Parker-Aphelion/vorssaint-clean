@@ -8,14 +8,17 @@ import Combine
 /// so changing a mode on one display updates the controls on all displays.
 final class ScreenCaptureSelectionOptions: ObservableObject {
     let availableTools: [ScreenCaptureTool]
+    let showsCaptureMenu: Bool
     let recorderAudio = RecorderSelectionAudioOptions()
     @Published private(set) var selectedTool: ScreenCaptureTool
     var onSelectionChange: (() -> Void)?
 
-    init(availableTools: [ScreenCaptureTool], selectedTool: ScreenCaptureTool) {
+    init(availableTools: [ScreenCaptureTool], selectedTool: ScreenCaptureTool,
+         showsCaptureMenu: Bool) {
         precondition(availableTools.contains(selectedTool))
         self.availableTools = availableTools
         self.selectedTool = selectedTool
+        self.showsCaptureMenu = showsCaptureMenu
     }
 
     func select(_ tool: ScreenCaptureTool) {
@@ -26,14 +29,27 @@ final class ScreenCaptureSelectionOptions: ObservableObject {
 }
 
 /// One entry point for screenshot, recording, screen text and color. It owns
-/// the only general screen-capture shortcut and one shared selection surface;
-/// the established feature services still own what happens after selection.
+/// each tool's own capture shortcut and one shared selection surface; the
+/// established feature services still own what happens after selection.
 final class ScreenCaptureService: ObservableObject {
     static let shared = ScreenCaptureService()
 
-    @Published private(set) var shortcutRegistrationFailed = false
+    /// The tools whose own shortcut could not be registered, so each tool's
+    /// settings can say so.
+    @Published private(set) var toolShortcutRegistrationFailures: Set<ScreenCaptureTool> = []
 
-    private let hotkey = QuickToolHotkey(id: 15)
+    /// One hotkey per tool, built from the tool list so a new mode cannot be
+    /// added without one. Ids continue past the hand-assigned quick tool
+    /// range, which ends at 24.
+    private let toolHotkeys: [ScreenCaptureTool: QuickToolHotkey] = {
+        var next: UInt32 = 25
+        var hotkeys: [ScreenCaptureTool: QuickToolHotkey] = [:]
+        for tool in ScreenCaptureTool.allCases {
+            hotkeys[tool] = QuickToolHotkey(id: next)
+            next += 1
+        }
+        return hotkeys
+    }()
     private var selection: ScreenshotSelectionController?
     private var options: ScreenCaptureSelectionOptions?
     private var countdown: DispatchWorkItem?
@@ -45,14 +61,16 @@ final class ScreenCaptureService: ObservableObject {
     }
 
     private init() {
-        hotkey.onPress = { [weak self] in self?.capture() }
+        for (tool, hotkey) in toolHotkeys {
+            hotkey.onPress = { [weak self] in self?.capture(initial: tool, fromShortcut: true) }
+        }
     }
 
     func syncWithPreferences() {
         let availableTools = ScreenCaptureTool.available()
         guard !availableTools.isEmpty else {
-            shortcutRegistrationFailed = false
-            hotkey.unregister()
+            toolShortcutRegistrationFailures = []
+            toolHotkeys.values.forEach { $0.unregister() }
             cancelSelection()
             return
         }
@@ -61,26 +79,40 @@ final class ScreenCaptureService: ObservableObject {
                                                         availableTools: availableTools) {
             cancelSelection()
         }
-        let defaults = UserDefaults.standard
-        let enabled = defaults.bool(forKey: DefaultsKey.screenshotShortcutEnabled)
-        let shortcut = GlobalShortcut.saved(for: DefaultsKey.screenshotShortcut,
-                                            fallback: .screenshotDefault)
-        shortcutRegistrationFailed = !hotkey.sync(enabled: enabled, shortcut: shortcut)
+        syncToolShortcuts(availableTools: availableTools, defaults: UserDefaults.standard)
+    }
+
+    /// A tool's own shortcut opens the same chooser already on that mode. A
+    /// tool whose feature is not installed leaves its combination free for
+    /// whatever else wants it.
+    private func syncToolShortcuts(availableTools: [ScreenCaptureTool],
+                                   defaults: UserDefaults) {
+        var failures: Set<ScreenCaptureTool> = []
+        for (tool, hotkey) in toolHotkeys {
+            let keys = tool.dedicatedShortcut
+            let enabled = availableTools.contains(tool) && defaults.bool(forKey: keys.enabledKey)
+            if !hotkey.sync(enabled: enabled, shortcut: keys.role.savedShortcut) {
+                failures.insert(tool)
+            }
+        }
+        toolShortcutRegistrationFailures = failures
     }
 
     func suspend() {
-        hotkey.unregister()
+        toolHotkeys.values.forEach { $0.unregister() }
         cancelSelection()
     }
 
     /// Opens the same chooser from every feature surface. A feature-specific
     /// button merely picks the initial mode; the person can switch before
     /// selecting anything.
-    func capture(initial preferred: ScreenCaptureTool? = nil) {
-        if AppFeature.screenRecorder.isAvailable,
-           ScreenRecorderService.shared.stopOrCancelActiveCapture() {
+    func capture(initial preferred: ScreenCaptureTool? = nil, fromShortcut: Bool = false) {
+        let recorder = ScreenRecorderService.shared
+        if preferred == .recording, AppFeature.screenRecorder.isAvailable,
+           recorder.stopOrCancelActiveCapture() {
             return
         }
+        guard !recorder.hasActiveCapture else { return }
         if countdown != nil {
             cancelSelection()
             return
@@ -107,40 +139,44 @@ final class ScreenCaptureService: ObservableObject {
             return
         }
 
+        let showsCaptureMenu = selected.showsCaptureMenu(fromShortcut: fromShortcut)
         let delay = selected == .screenshot
             ? ScreenshotSupport.sanitizedDelay(
                 UserDefaults.standard.integer(forKey: DefaultsKey.screenshotDelay))
             : 0
         guard delay > 0 else {
-            beginSelection(tools: tools, selected: selected)
+            beginSelection(tools: tools, selected: selected, showsCaptureMenu: showsCaptureMenu)
             return
         }
         countdownRemaining = delay
         countdownTools = tools
-        tickCountdown(tools: tools, selected: selected)
+        tickCountdown(tools: tools, selected: selected, showsCaptureMenu: showsCaptureMenu)
     }
 
-    private func tickCountdown(tools: [ScreenCaptureTool], selected: ScreenCaptureTool) {
+    private func tickCountdown(tools: [ScreenCaptureTool], selected: ScreenCaptureTool,
+                               showsCaptureMenu: Bool) {
         guard countdownRemaining > 0 else {
             countdown = nil
             countdownTools = nil
-            beginSelection(tools: tools, selected: selected)
+            beginSelection(tools: tools, selected: selected, showsCaptureMenu: showsCaptureMenu)
             return
         }
         QuickToolHUD.showCountdown(countdownRemaining)
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.countdownRemaining -= 1
-            self.tickCountdown(tools: tools, selected: selected)
+            self.tickCountdown(tools: tools, selected: selected, showsCaptureMenu: showsCaptureMenu)
         }
         countdown = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
     }
 
-    private func beginSelection(tools: [ScreenCaptureTool], selected: ScreenCaptureTool) {
+    private func beginSelection(tools: [ScreenCaptureTool], selected: ScreenCaptureTool,
+                               showsCaptureMenu: Bool) {
         guard selection == nil, !ScreenshotSelectionController.isSessionOnScreen else { return }
         let options = ScreenCaptureSelectionOptions(availableTools: tools,
-                                                    selectedTool: selected)
+                                                    selectedTool: selected,
+                                                    showsCaptureMenu: showsCaptureMenu)
         self.options = options
         startSelection(options: options)
     }
@@ -177,24 +213,6 @@ final class ScreenCaptureService: ObservableObject {
             self.options = nil
             self.route(outcome, selected: options.selectedTool,
                        recorderAudio: options.recorderAudio)
-        }
-        options.onSelectionChange = { [weak self, weak controller, weak options] in
-            guard let self, let controller, let options else { return }
-            self.replaceSelection(controller, options: options)
-        }
-    }
-
-    private func replaceSelection(_ controller: ScreenshotSelectionController,
-                                  options: ScreenCaptureSelectionOptions) {
-        guard selection === controller, self.options === options else { return }
-        controller.prepareForCapturePolicyChange()
-        selection = nil
-        controller.cancel()
-        DispatchQueue.main.async { [weak self, weak options] in
-            guard let self, let options, self.selection == nil,
-                  self.options === options,
-                  options.selectedTool.feature.isAvailable else { return }
-            self.startSelection(options: options)
         }
     }
 

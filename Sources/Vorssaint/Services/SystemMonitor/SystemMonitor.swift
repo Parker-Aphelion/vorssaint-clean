@@ -33,6 +33,9 @@ struct SystemSnapshot {
     var cpuTemperatureReadAt: TimeInterval?
     var gpuTemperature: Double?
     var batteryTemperature: Double?
+    /// The uptime timestamp of the last real battery sensor read. Cached values
+    /// keep their original timestamp so they cannot age into a sustained alert.
+    var batteryTemperatureReadAt: TimeInterval?
     var cpuUsage: Double?          // 0...1
     /// When `cpuUsage` was last really read, on the system uptime clock; the
     /// value is carried over failed reads, and the hot CPU alert has to tell
@@ -42,6 +45,8 @@ struct SystemSnapshot {
     var memoryUsed: UInt64?
     var memoryAppUsed: UInt64?
     var memoryTotal: UInt64?
+    var memoryCompressed: UInt64?
+    var memoryCached: UInt64?
     var memorySwapUsed: UInt64?
     var memoryPressure: MemoryPressure = .unknown
     var fanSpeeds: [Double] = []
@@ -422,6 +427,8 @@ final class SystemMonitor: ObservableObject {
         var used: UInt64
         var appUsed: UInt64
         var total: UInt64
+        var compressed: UInt64
+        var cached: UInt64
         var swapUsed: UInt64?
         var pressure: MemoryPressure
         var updatedAt: TimeInterval
@@ -440,10 +447,12 @@ final class SystemMonitor: ObservableObject {
         let panelGPU = (panelNeedsSystem && defaults.bool(forKey: DefaultsKey.monitorSysGPU)) || menuPanelNeeds.gpu
         let panelMemory = (panelNeedsSystem && defaults.bool(forKey: DefaultsKey.monitorSysMemory)) || menuPanelNeeds.memory
         let panelBattery = hasInternalBattery
-            && ((panelNeedsSystem && defaults.bool(forKey: DefaultsKey.monitorSysBattery)) || menuPanelNeeds.battery)
+            && ((panelNeedsPower && defaults.bool(forKey: DefaultsKey.monitorSysBattery)) || menuPanelNeeds.battery)
         let panelTemps = panelNeedsSystem && defaults.bool(forKey: DefaultsKey.monitorSysTemps)
         let alertCPU = defaults.bool(forKey: DefaultsKey.monitorAlertCPU)
         let alertCPUTemperature = defaults.bool(forKey: DefaultsKey.monitorAlertCPUTemperature)
+        let alertBatteryTemperature = hasInternalBattery
+            && defaults.bool(forKey: DefaultsKey.monitorAlertBatteryTemperature)
         let alertMemory = defaults.bool(forKey: DefaultsKey.monitorAlertMemory)
         let alertDisk = defaults.bool(forKey: DefaultsKey.monitorAlertDisk)
         let alertBattery = hasInternalBattery && defaults.bool(forKey: DefaultsKey.monitorAlertBattery)
@@ -467,8 +476,10 @@ final class SystemMonitor: ObservableObject {
             defaults.bool(forKey: DefaultsKey.menuBarCPUTemperature) || alertCPUTemperature
         plan.needGPUTemperature = panelTemps || menuPanelNeeds.gpuTemperature ||
             defaults.bool(forKey: DefaultsKey.menuBarGPUTemperature)
-        plan.needBatteryTemperature = hasInternalBattery && (panelTemps || menuPanelNeeds.batteryTemperature ||
-            defaults.bool(forKey: DefaultsKey.menuBarBatteryTemperature))
+        plan.needBatteryTemperature = hasInternalBattery && (
+            (panelNeedsPower && defaults.bool(forKey: DefaultsKey.monitorPwrTemperature))
+                || menuPanelNeeds.batteryTemperature
+                || defaults.bool(forKey: DefaultsKey.menuBarBatteryTemperature) || alertBatteryTemperature)
         if defaults.bool(forKey: AppFeature.fanControl.availabilityKey),
            Self.fanTelemetryAvailable {
             plan.needFanSpeed = fullMonitorVisible || menuPanelNeeds.fanSpeed
@@ -631,13 +642,15 @@ final class SystemMonitor: ObservableObject {
 
             if plan.needMemory {
                 if take(.memory),
-                   let memory = self.stabilizedMemoryReading(now: now) {
+                   let (memory, isFresh) = self.stabilizedMemoryReading(now: now) {
                     next.memoryUsed = memory.used
                     next.memoryAppUsed = memory.appUsed
                     next.memoryTotal = memory.total
+                    next.memoryCompressed = memory.compressed
+                    next.memoryCached = memory.cached
                     next.memorySwapUsed = memory.swapUsed
                     next.memoryPressure = memory.pressure
-                    if memory.isFresh, memory.total > 0 {
+                    if isFresh, memory.total > 0 {
                         self.memoryHistory.push(Double(memory.used) / Double(memory.total))
                         self.memoryAppHistory.push(Double(memory.appUsed) / Double(memory.total))
                     }
@@ -759,6 +772,7 @@ final class SystemMonitor: ObservableObject {
                 } else {
                     next.batteryTemperature = self.batteryTemperatureCache?.value
                 }
+                next.batteryTemperatureReadAt = self.batteryTemperatureCache?.updatedAt
             }
             if plan.needFanSpeed {
                 if take(.fanSpeed) {
@@ -817,7 +831,7 @@ final class SystemMonitor: ObservableObject {
         }
     }
 
-    private func stabilizedMemoryReading(now: TimeInterval) -> (used: UInt64, appUsed: UInt64, total: UInt64, swapUsed: UInt64?, pressure: MemoryPressure, isFresh: Bool)? {
+    private func stabilizedMemoryReading(now: TimeInterval) -> (CachedMemoryReading, isFresh: Bool)? {
         let pressure = Self.readMemoryPressure()
         if let memory = SystemInfo.memoryUsage(), memory.total > 0 {
             let swapUsed = memory.swapUsed ?? memoryCache?.swapUsed
@@ -828,31 +842,34 @@ final class SystemMonitor: ObservableObject {
             case .normal, .warning, .critical:
                 stablePressure = pressure
             }
-            memoryCache = CachedMemoryReading(used: memory.used,
+            let reading = CachedMemoryReading(used: memory.used,
                                               appUsed: memory.appUsed,
                                               total: memory.total,
+                                              compressed: memory.compressed,
+                                              cached: memory.cached,
                                               swapUsed: swapUsed,
                                               pressure: stablePressure,
                                               updatedAt: now,
                                               missedSamples: 0)
-            return (memory.used, memory.appUsed, memory.total, swapUsed, stablePressure, true)
+            memoryCache = reading
+            return (reading, true)
         }
 
-        guard var cached = memoryCache else { return nil }
-        cached.missedSamples += 1
-        guard cached.missedSamples <= 4, now - cached.updatedAt <= 12 else {
+        guard var held = memoryCache else { return nil }
+        held.missedSamples += 1
+        guard held.missedSamples <= 4, now - held.updatedAt <= 12 else {
             memoryCache = nil
             return nil
         }
 
         switch pressure {
         case .normal, .warning, .critical:
-            cached.pressure = pressure
+            held.pressure = pressure
         case .unknown:
             break
         }
-        memoryCache = cached
-        return (cached.used, cached.appUsed, cached.total, cached.swapUsed, cached.pressure, false)
+        memoryCache = held
+        return (held, false)
     }
 
     // MARK: - Sensor preparation
@@ -884,13 +901,21 @@ final class SystemMonitor: ObservableObject {
         tempKeysPrepared = true
 
         let all = client.keys { name in
-            name.hasPrefix("Tp") || name.hasPrefix("Te") || name.hasPrefix("Tg")
+            TemperatureSensorSelector.isCPUTemperatureKey(name, platform: cpuTemperaturePlatform)
+                || name.hasPrefix("Tg")
                 || name.range(of: "^TB[0-9]T$", options: .regularExpression) != nil
         }
-        cpuKeys = all.filter { $0.name.hasPrefix("Tp") || $0.name.hasPrefix("Te") }
+        cpuKeys = all.filter {
+            TemperatureSensorSelector.isCPUTemperatureKey($0.name,
+                                                          platform: cpuTemperaturePlatform)
+        }
         preferredCPUKeys = cpuKeys.filter {
             TemperatureSensorSelector.isCPUCoreKey($0.name, platform: cpuTemperaturePlatform)
         }
+        // Everything that is not a verified core of this chip, swept only when
+        // the core set goes silent. 3.3.3 emptied this list for every mapped
+        // chip, which is what left a Mac carrying none of its generation's
+        // core sensors with no reading at all.
         let preferredNames = Set(preferredCPUKeys.map(\.name))
         fallbackCPUKeys = cpuKeys.filter { !preferredNames.contains($0.name) }
         gpuKeys = all.filter { $0.name.hasPrefix("Tg") }
@@ -923,8 +948,8 @@ final class SystemMonitor: ObservableObject {
         guard smc != nil else { return nil }
         // The core set decides the displayed value whenever it answers, so a
         // normal tick reads only those keys; the remaining Tp/Te keys are
-        // swept exactly when they would have mattered before the split —
-        // unknown platforms (empty core set) or a tick with no plausible
+        // swept exactly when they would have mattered before the split — a
+        // Mac without this chip's core sensors, or a tick with no plausible
         // core reading.
         var readings = temperatureReadings(of: preferredCPUKeys)
         if let value = TemperatureSensorSelector.displayedCPUTemperature(readings: readings,
@@ -994,12 +1019,14 @@ final class SystemMonitor: ObservableObject {
                                            &iterator) == kIOReturnSuccess else { return nil }
         defer { IOObjectRelease(iterator) }
 
-        var entry = IOIteratorNext(iterator)
-        while entry != 0 {
-            defer {
-                IOObjectRelease(entry)
-                entry = IOIteratorNext(iterator)
-            }
+        // The advance lives in the `while` condition so the `defer` only
+        // releases. With the advance inside the defer, returning from the loop
+        // ran it: it released the entry it was done with and then took a
+        // reference on the next service that nothing released. Machines with a
+        // second IOAccelerator (Intel dual graphics, an eGPU) leaked one
+        // io_object_t per sampling tick that way.
+        while case let entry = IOIteratorNext(iterator), entry != 0 {
+            defer { IOObjectRelease(entry) }
             // Fetch ONLY PerformanceStatistics, not the whole (large) property
             // tree. Copying every property each tick is what made continuous GPU
             // sampling for the menu bar expensive.

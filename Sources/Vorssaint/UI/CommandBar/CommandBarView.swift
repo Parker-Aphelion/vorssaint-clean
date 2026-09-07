@@ -10,10 +10,21 @@ import SwiftUI
 struct CommandBarView: View {
     /// Short enough to sit on one line, chosen to show three different things
     /// the bar can do that a list of commands would never reveal.
-    static var examples: [String] {
-        ["100 km to mi", "2+2*3", "battery", "fire"].filter {
-            $0 != "battery" || PowerSampler.hasInternalBattery
+    ///
+    /// The battery one is the localized word, because that is the word the
+    /// answer is titled with. As a fixed English "battery" the chip matched
+    /// nothing in the other twelve languages and led to an empty list, which
+    /// teaches the opposite of what an example is for. The other three hold
+    /// everywhere: the maths is language-free, the conversion parser already
+    /// takes each language's own word for "to", and the emoji names come from
+    /// Unicode, which spells them in English on purpose.
+    static func examples(_ text: CommandBarFeatureStrings) -> [String] {
+        var examples = ["100 km to mi", "2+2*3"]
+        if PowerSampler.hasInternalBattery {
+            examples.append(text.answerBatteryLabel.lowercased())
         }
+        examples.append("fire")
+        return examples
     }
     /// As tall as the list is ever allowed to be, so the panel never grows
     /// past what a laptop screen can show above the fold.
@@ -134,8 +145,12 @@ struct CommandBarView: View {
                 Divider()
                 shortcutCard(entryID: entryID)
             }
-            Divider()
-            footer
+            // A footer under a bare field reads as a second row of chrome on
+            // something meant to be one strip.
+            if !service.isCompactHome {
+                Divider()
+                footer
+            }
         }
         .frame(width: 560)
         .background(HUDBackdrop(cornerRadius: 22, contrast: .high))
@@ -192,6 +207,7 @@ struct CommandBarView: View {
                 .focused($searchFocused)
                 .disableAutocorrection(true)
                 .accessibilityLabel(text.pageTitle)
+            if service.isCompactHome { compactHints }
             if !service.query.isEmpty {
                 Button {
                     service.query = ""
@@ -205,6 +221,23 @@ struct CommandBarView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
+    }
+
+    /// The collapsed bar has no footer, so the keys that still work (↓ to
+    /// peek, Esc to close) say so inline instead, in the footer's own glyphs.
+    private var compactHints: some View {
+        HStack(spacing: 4) {
+            Text("↓")
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+            Text(text.suggestionsLabel)
+                .font(.system(size: 9))
+            Text("Esc")
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .padding(.leading, 4)
+        }
+        .foregroundStyle(.tertiary)
+        .lineLimit(1)
+        .fixedSize()
     }
 
     /// Everything that can be done to the selected row, in the same list
@@ -304,9 +337,10 @@ struct CommandBarView: View {
                 .padding(.horizontal, 17)
                 .padding(.top, 12)
             }
-            Text(text.shortcutCaptureHint)
+            Text(service.aliasWarning ?? text.shortcutCaptureHint)
                 .font(.system(size: 10.5))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(service.aliasWarning == nil
+                                 ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.orange))
                 .padding(.horizontal, 17)
                 .padding(.bottom, 12)
         }
@@ -370,7 +404,7 @@ struct CommandBarView: View {
                         .font(.system(size: 9, weight: .bold))
                         .tracking(0.5)
                         .foregroundStyle(.tertiary)
-                    ForEach(CommandBarView.examples, id: \.self) { example in
+                    ForEach(CommandBarView.examples(text), id: \.self) { example in
                         Button {
                             service.query = example
                         } label: {

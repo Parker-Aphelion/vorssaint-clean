@@ -5,61 +5,6 @@ import AppKit
 import AVKit
 import SwiftUI
 
-/// Shown once, automatically, to a user who skipped one or more releases between
-/// updates (e.g. 3.0.2 → 3.0.5), so the changes they missed — not only the
-/// current version — are surfaced. Clean installs, single-step updates and
-/// normal relaunches never see it.
-struct WhatsNewView: View {
-    let releases: [ReleaseNotes]
-    var onClose: () -> Void
-    var onDontShowAgain: () -> Void
-
-    @ObservedObject private var l10n = L10n.shared
-
-    var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            ScrollView {
-                ReleaseNotesContent(releases: releases)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 22)
-            }
-            Divider()
-            footer
-        }
-        .frame(width: 640, height: 600)
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
-
-    private var header: some View {
-        HStack {
-            Text(l10n.s.tabReleaseNotes)
-                .font(.system(size: 22, weight: .bold))
-            Spacer()
-        }
-        .padding(.horizontal, 28)
-        .padding(.top, 24)
-        .padding(.bottom, 16)
-    }
-
-    private var footer: some View {
-        HStack {
-            Button(l10n.s.whatsNewDontShowAgain) {
-                onDontShowAgain()
-            }
-            Spacer()
-            Button(l10n.s.menuClose) {
-                onClose()
-            }
-            .keyboardShortcut(.defaultAction)
-            .buttonStyle(.borderedProminent)
-        }
-        .padding(16)
-    }
-}
-
 /// Pre-install preview window content: shows the next version's full changelog —
 /// the same notes that ship with the release — so the user can decide before any
 /// download starts. Opened from both the Settings install button and the menu
@@ -224,7 +169,7 @@ struct UpdateSupportIntroView: View {
     @State private var step: SupportUpdateIntroStep
     @State private var isMovingForward = true
 
-    init(initialStep: SupportUpdateIntroStep = .discord,
+    init(initialStep: SupportUpdateIntroStep = .support,
          onFinish: @escaping () -> Void) {
         self.onFinish = onFinish
         _step = State(initialValue: initialStep)
@@ -234,14 +179,11 @@ struct UpdateSupportIntroView: View {
         VStack(spacing: 0) {
             ZStack {
                 switch step {
-                case .discord:
-                    discordContent
+                case .support:
+                    supportContent
                         .transition(pageTransition)
                 case .social:
                     socialContent
-                        .transition(pageTransition)
-                case .support:
-                    supportContent
                         .transition(pageTransition)
                 }
             }
@@ -270,78 +212,6 @@ struct UpdateSupportIntroView: View {
         isMovingForward = forward
         withAnimation(.easeInOut(duration: 0.3)) {
             step = destination
-        }
-    }
-
-    private var discordContent: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(red: 0.42, green: 0.48, blue: 1.0),
-                                     Color(red: 0.29, green: 0.34, blue: 0.88)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 74, height: 74)
-                    .shadow(color: Color(red: 0.29, green: 0.34, blue: 0.88).opacity(0.28),
-                            radius: 12, y: 5)
-                DiscordMark(width: 42)
-            }
-
-            Text(l10n.s.discordIntroTitle)
-                .font(.system(size: 22, weight: .bold))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text(l10n.s.discordIntroMessage)
-                .font(.system(size: 13.5))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: 450)
-
-            VStack(alignment: .leading, spacing: 9) {
-                discordBenefit(l10n.s.discordIntroBenefitHelp,
-                               systemImage: "questionmark.bubble.fill")
-                discordBenefit(l10n.s.discordIntroBenefitFeedback,
-                               systemImage: "lightbulb.fill")
-                discordBenefit(l10n.s.discordIntroBenefitPreviews,
-                               systemImage: "sparkles")
-            }
-            .frame(maxWidth: 430, alignment: .leading)
-            .padding(.vertical, 2)
-
-            Button {
-                openURL(AppInfo.discordURL)
-            } label: {
-                HStack(spacing: 8) {
-                    DiscordMark(width: 19)
-                    Text(l10n.s.discordIntroJoinButton)
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(Color(red: 0.35, green: 0.40, blue: 0.94))
-
-            Text(AppInfo.discordURL.absoluteString
-                .replacingOccurrences(of: "https://", with: ""))
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    private func discordBenefit(_ text: String, systemImage: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 18)
-            Text(text)
-                .font(.system(size: 13, weight: .medium))
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

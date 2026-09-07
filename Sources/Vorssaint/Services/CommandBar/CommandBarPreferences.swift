@@ -29,6 +29,7 @@ enum CommandBarSource: String, CaseIterable, Identifiable {
     /// Files found by name in the folders the person named. Last, because it
     /// is the one source that has to go and look.
     case files
+    case killProcess
 
     var id: String { rawValue }
 
@@ -54,6 +55,7 @@ enum CommandBarSource: String, CaseIterable, Identifiable {
         case .selection: return "text.cursor"
         case .links: return "bookmark"
         case .files: return "doc.text.magnifyingglass"
+        case .killProcess: return "xmark.octagon"
         }
     }
 
@@ -76,6 +78,7 @@ enum CommandBarSource: String, CaseIterable, Identifiable {
         case .selection: return "selection."
         case .links: return "link."
         case .files: return "file."
+        case .killProcess: return "kill."
         }
     }
 }
@@ -86,6 +89,7 @@ enum CommandBarSource: String, CaseIterable, Identifiable {
 enum CommandBarPreferences {
     /// Row shortcuts persist ids, so this one must never drift.
     static let emojiBrowserRowID = "emoji.browse"
+    static let killProcessBrowserRowID = "kill.browse"
 
     // MARK: - Sources
 
@@ -129,9 +133,10 @@ enum CommandBarPreferences {
         // A file is the deepest and most numerous thing the bar can find, and
         // a bar is for running things first. So a file has to be a plainly
         // better match than a command to lead the list, never merely as good.
-        case .files: return -40
-        case .actions, .apps, .windows, .quitApps, .settingsPages, .macSettings, .snippets,
-             .clipboard, .emoji, .folders, .answers, .calculator, .selection, .links:
+        case .files, .settingsPages: return -40
+        case .apps: return 80
+        case .actions, .windows, .quitApps, .macSettings, .snippets,
+             .clipboard, .emoji, .folders, .answers, .calculator, .selection, .links, .killProcess:
             return 0
         }
     }
@@ -160,7 +165,7 @@ enum CommandBarPreferences {
     /// pinned to one would silently point somewhere else tomorrow.
     static func acceptsAlias(rowID: String) -> Bool {
         switch source(ofRowID: rowID) {
-        case .menus, .windows, .clipboard, .selection, .files: return false
+        case .menus, .windows, .clipboard, .selection, .files, .killProcess: return false
         case .actions, .apps, .quitApps, .settingsPages, .macSettings, .snippets, .emoji,
              .folders, .answers, .calculator, .links:
             return true
@@ -190,7 +195,12 @@ enum CommandBarPreferences {
     }
 
     static func aliasHit(_ alias: String, query: String) -> AliasHit? {
-        let normalizedQuery = CommandBarSearch.normalized(query)
+        aliasHit(alias, normalizedQuery: CommandBarSearch.normalized(query))
+    }
+
+    /// The same answer for letters the caller has already folded, so a pass
+    /// over the pool folds the query once instead of once per named row.
+    static func aliasHit(_ alias: String, normalizedQuery: String) -> AliasHit? {
         guard !normalizedQuery.isEmpty else { return nil }
         var best: AliasHit?
         for word in CommandBarSearch.normalized(alias).split(separator: " ").map(String.init)
@@ -228,7 +238,7 @@ enum CommandBarPreferences {
     /// again, which reads as the pin being broken.
     static func acceptsPin(rowID: String) -> Bool {
         switch source(ofRowID: rowID) {
-        case .menus, .quitApps, .clipboard, .emoji, .selection, .files: return false
+        case .menus, .quitApps, .clipboard, .emoji, .selection, .files, .killProcess: return false
         case .actions, .apps, .windows, .settingsPages, .macSettings, .snippets, .folders,
              .links, .answers, .calculator:
             return true
@@ -269,6 +279,23 @@ enum CommandBarPreferences {
     /// there is no ranking to respect yet.
     static func leadingPins(_ pins: [String], available: Set<String>) -> [String] {
         pins.filter { available.contains($0) }
+    }
+
+    /// Settings lists the same pins the empty bar would, except an app or
+    /// folder that is not on this Mac right now still appears so it can be
+    /// taken off. A hub feature that was uninstalled does not: its row is
+    /// gone, and leaving the id behind reads as a broken pin.
+    static func listedPins(_ pins: [String], present: Set<String>) -> [String] {
+        pins.filter { present.contains($0) || !isHubOwned($0) }
+    }
+
+    private static func isHubOwned(_ rowID: String) -> Bool {
+        switch source(ofRowID: rowID) {
+        case .actions, .settingsPages, .snippets: return true
+        case .apps, .menus, .windows, .quitApps, .macSettings, .clipboard, .emoji,
+             .folders, .answers, .calculator, .selection, .links, .files, .killProcess:
+            return false
+        }
     }
 
     // MARK: - Rows the person never wants to see

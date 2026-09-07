@@ -33,6 +33,7 @@ enum ShortcutRecordingTap {
     /// super key does lets a field record the combination the way it will be
     /// pressed later, instead of asking for the chosen modifiers by hand.
     private static var superState = SuperKeySupport.State()
+    private static var observingSession = false
 
     /// Starts swallowing key events and delivering each fresh press to the
     /// handler. Returns false when the tap cannot exist (no Accessibility),
@@ -44,6 +45,12 @@ enum ShortcutRecordingTap {
         drainingKeyCode = nil
         heldKeyCode = nil
         superState.reset()
+        // Registered before the Accessibility check: ShortcutCapture.begin() has
+        // already switched the global shortcuts off, and the resign must give them back.
+        if !observingSession {
+            observingSession = true
+            SessionActivity.shared.onChange { if !$0 { tearDown(); ShortcutCapture.end() } }
+        }
         // A tap the system disabled behind our back reads as dead; rebuild.
         if let tap, !CGEvent.tapIsEnabled(tap: tap) {
             tearDown()
@@ -116,7 +123,11 @@ enum ShortcutRecordingTap {
 
     private static func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
+            if SessionActivity.shared.isActive, AXIsProcessTrusted(), let tap {
+                CGEvent.tapEnable(tap: tap, enable: true)
+            } else {
+                DispatchQueue.main.async { tearDown(); ShortcutCapture.end() }
+            }
             return Unmanaged.passUnretained(event)
         }
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
@@ -128,12 +139,19 @@ enum ShortcutRecordingTap {
             if SuperKeyService.isEngaged {
                 let superEvent: SuperKeySupport.Event
                 if keyCode == SuperKeySupport.triggerKeyCode {
-                    superEvent = type == .keyDown ? .triggerDown(isRepeat: isRepeat) : .triggerUp
+                    let timestamp = UInt64(event.timestamp)
+                    superEvent = type == .keyDown
+                        ? .triggerDown(
+                            isRepeat: isRepeat,
+                            hasPrimaryModifiers: !GlobalShortcutModifiers(cgFlags: event.flags).isEmpty,
+                            timestamp: timestamp
+                        )
+                        : .triggerUp(timestamp: timestamp)
                 } else {
                     superEvent = .otherKey
                 }
                 switch superState.decide(superEvent) {
-                case .swallow, .soloTap: return nil
+                case .swallow, .soloTap(repeated: _), .soloHold(repeated: _): return nil
                 case .addModifiers: heldModifiers = SuperKeyService.shared.modifiers
                 case .pass, .interceptAndRemap: break
                 }

@@ -36,6 +36,50 @@ enum ScreenCaptureTool: String, CaseIterable {
         }
     }
 
+    /// A tool's own global shortcut, which opens the chooser already on that
+    /// mode. The screenshot tool's entry keeps the storage keys of the old
+    /// general capture shortcut, so an existing combination keeps working
+    /// unchanged under its new per-tool name.
+    ///
+    /// Every case must have a hotkey registered for it. `ScreenCaptureService`
+    /// builds exactly one per case from this list, so a tool cannot gain a
+    /// settings row whose key nothing registers, which is what left three of
+    /// them doing nothing (issue #708).
+    struct DedicatedShortcut {
+        let role: GlobalShortcutRole
+        let enabledKey: String
+    }
+
+    var dedicatedShortcut: DedicatedShortcut {
+        switch self {
+        case .screenshot:
+            return DedicatedShortcut(role: .screenshot,
+                                     enabledKey: DefaultsKey.screenshotShortcutEnabled)
+        case .recording:
+            return DedicatedShortcut(role: .screenRecorder,
+                                     enabledKey: DefaultsKey.recorderShortcutEnabled)
+        case .text:
+            return DedicatedShortcut(role: .screenOCR,
+                                     enabledKey: DefaultsKey.screenOCRShortcutEnabled)
+        case .color:
+            return DedicatedShortcut(role: .colorPicker,
+                                     enabledKey: DefaultsKey.colorPickerShortcutEnabled)
+        }
+    }
+
+    var showCaptureMenuOnShortcutKey: String {
+        switch self {
+        case .screenshot: return DefaultsKey.screenshotShowCaptureMenuOnShortcut
+        case .recording: return DefaultsKey.recorderShowCaptureMenuOnShortcut
+        case .text: return DefaultsKey.screenOCRShowCaptureMenuOnShortcut
+        case .color: return DefaultsKey.colorPickerShowCaptureMenuOnShortcut
+        }
+    }
+
+    func showsCaptureMenu(fromShortcut: Bool, defaults: UserDefaults = .standard) -> Bool {
+        !fromShortcut || (defaults.object(forKey: showCaptureMenuOnShortcutKey) as? Bool ?? true)
+    }
+
     var systemImageName: String {
         switch self {
         case .screenshot: return "camera.viewfinder"
@@ -71,6 +115,15 @@ enum ScreenshotSupport {
         let includePointer: Bool
         let hideVorssaintWindows: Bool
         let usesGeometry: Bool
+
+        /// Two tools can want the same photograph and still do different
+        /// things with it, so only the fields that decide which pixels are
+        /// taken force a new one.
+        func sharesSource(with other: UnifiedCapturePolicy) -> Bool {
+            freeze == other.freeze
+                && includePointer == other.includePointer
+                && hideVorssaintWindows == other.hideVorssaintWindows
+        }
     }
 
     static func unifiedCapturePolicy(for tool: ScreenCaptureTool,
@@ -298,6 +351,52 @@ enum ScreenshotSupport {
         return .advanced(overlap: height - best.advance,
                          direction: best.reversed ? .backward : .forward,
                          contentColumns: best.contentColumns)
+    }
+
+    /// A fixed footer stays at the same viewport rows while the page behind it
+    /// advances. Keeping that suffix in every new strip repeats it throughout
+    /// the final image, so identify it separately from the moving overlap.
+    static func scrollingFixedBottomRows(previous: ScrollingSample,
+                                         current: ScrollingSample,
+                                         overlap: Int,
+                                         contentColumns: Range<Int>) -> Int {
+        guard previous.isValid, current.isValid,
+              previous.width == current.width,
+              previous.height == current.height,
+              overlap > 0, overlap < previous.height,
+              contentColumns.lowerBound >= 0,
+              contentColumns.upperBound <= previous.width,
+              !contentColumns.isEmpty
+        else { return 0 }
+
+        var rows = 0
+        for row in stride(from: previous.height - 1, through: 0, by: -1) {
+            let start = row * previous.width
+            var difference = 0
+            for column in contentColumns {
+                difference += abs(Int(previous.pixels[start + column])
+                    - Int(current.pixels[start + column]))
+            }
+            let average = Double(difference) / Double(contentColumns.count)
+            guard average <= 2 else { break }
+            rows += 1
+        }
+
+        let minimumRows = max(4, min(12, previous.height / 100))
+        guard rows >= minimumRows, rows < overlap else { return 0 }
+        return rows
+    }
+
+    /// Rows newly revealed by a forward scroll. A fixed footer shifts this
+    /// range upward by its own height; its pixels are appended once at the end.
+    static func scrollingNewContentRows(imageHeight: Int,
+                                        overlap: Int,
+                                        fixedBottomRows: Int) -> Range<Int>? {
+        guard imageHeight > 0,
+              overlap > 0, overlap < imageHeight,
+              fixedBottomRows >= 0, fixedBottomRows < overlap
+        else { return nil }
+        return (overlap - fixedBottomRows)..<(imageHeight - fixedBottomRows)
     }
 
     private static func scrollingDifference(_ lhs: ScrollingSample,
@@ -1338,34 +1437,173 @@ enum ScreenshotSupport {
         return CGRect(x: x, y: y, width: rect.width, height: rect.height)
     }
 
-    /// A stable square of source pixels for the crop loupe. Near an image
-    /// edge the sample slides inward instead of shrinking, while the loupe's
-    /// crosshair still points at the exact adjusted pixel.
-    static let captureLoupeBaseSampleSide: CGFloat = 12
-    static let captureLoupeMinZoom: CGFloat = 0.5
-    static let captureLoupeMaxZoom: CGFloat = 4
+    /// The pixel rectangle a crop draft stands for. A crop cuts on pixel
+    /// boundaries, so the chrome, the loupe cross and `applyCrop` all read the
+    /// draft through here and mark the same edge. Rounding both edges to the
+    /// nearest boundary leaves an already snapped rectangle the same size under
+    /// a move, because the two edges carry the same fraction.
+    static func pixelSnappedCropRect(_ rect: CGRect, within bounds: CGRect) -> CGRect {
+        let minX = (rect.minX).rounded()
+        let minY = (rect.minY).rounded()
+        let maxX = (rect.maxX).rounded()
+        let maxY = (rect.maxY).rounded()
+        return clamp(CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY),
+                     to: bounds)
+    }
 
-    static func captureLoupeZoom(_ zoom: CGFloat, adjustedBy scrollDelta: CGFloat) -> CGFloat {
-        guard scrollDelta != 0 else {
+    /// A stable square of source pixels for the crop loupe. Near an image
+    /// edge the sample slides inward instead of shrinking, and the loupe's
+    /// reticle still marks the exact adjusted pixel.
+    static let captureLoupeBaseSampleSide: CGFloat = 13
+    static let captureLoupeMinSampleSide: CGFloat = 3
+    static let captureLoupeMinZoom: CGFloat = 0.5
+    static var captureLoupeMaxZoom: CGFloat {
+        captureLoupeBaseSampleSide / captureLoupeMinSampleSide
+    }
+    static let captureLoupeDefaultZooms: [Double] = [0.5, 1, 2, 4]
+    /// The magnifier square on screen, in view points. Big enough that each
+    /// sampled pixel becomes a readable grid cell at every zoom level.
+    static let captureLoupeFrameSide: CGFloat = 132
+
+    static func captureLoupeInitialZoom(rememberLast: Bool,
+                                        defaultZoom: CGFloat,
+                                        lastZoom: CGFloat) -> CGFloat {
+        let requested = rememberLast ? lastZoom : defaultZoom
+        guard requested.isFinite else { return 1 }
+        return min(max(requested, captureLoupeMinZoom), captureLoupeMaxZoom)
+    }
+
+    static func captureLoupeUsesSteppedZoom(steppedByDefault: Bool,
+                                             optionPressed: Bool) -> Bool {
+        steppedByDefault != optionPressed
+    }
+
+    /// A few high-resolution mouse drivers put sub-notch movement only in
+    /// the fixed-point wheel field. `NSEvent.scrollingDeltaY` rounds those
+    /// packets to zero, which would make apparently random notches disappear.
+    static func captureLoupeWheelDelta(scrollingDelta: CGFloat,
+                                       lineDelta: Int64,
+                                       fixedPointDelta: Double) -> CGFloat {
+        if fixedPointDelta.isFinite, fixedPointDelta != 0 {
+            return CGFloat(fixedPointDelta)
+        }
+        if lineDelta != 0 { return CGFloat(lineDelta) }
+        return scrollingDelta.isFinite ? scrollingDelta : 0
+    }
+
+    /// Fast mode preserves the original one-step-per-event behavior.
+    static func captureLoupeZoom(_ zoom: CGFloat,
+                                 adjustedBy scrollDelta: CGFloat) -> CGFloat {
+        guard scrollDelta.isFinite, scrollDelta != 0 else {
             return min(max(zoom, captureLoupeMinZoom), captureLoupeMaxZoom)
         }
         let factor: CGFloat = scrollDelta > 0 ? 1.15 : 1 / 1.15
         return min(max(zoom * factor, captureLoupeMinZoom), captureLoupeMaxZoom)
     }
 
-    static func captureLoupeSampleSide(zoom: CGFloat) -> CGFloat {
+    /// Step mode advances by exactly one drawable pixel-grid level. A fixed
+    /// percentage cannot promise that: at the wide end it can skip two odd
+    /// sample sizes, while at the narrow end it can round back to the same
+    /// size and appear to do nothing.
+    static func captureLoupeSteppedZoom(_ zoom: CGFloat,
+                                        adjustedBy scrollDelta: CGFloat) -> CGFloat {
         let clamped = min(max(zoom, captureLoupeMinZoom), captureLoupeMaxZoom)
-        return captureLoupeBaseSampleSide / clamped
+        guard scrollDelta.isFinite, scrollDelta != 0 else { return clamped }
+
+        let currentSide = captureLoupeSampleSide(zoom: clamped)
+        let widestSide = captureLoupeSampleSide(zoom: captureLoupeMinZoom)
+        let targetSide = scrollDelta > 0
+            ? max(captureLoupeMinSampleSide, currentSide - 2)
+            : min(widestSide, currentSide + 2)
+        guard targetSide != currentSide else { return clamped }
+
+        // The widest level lies just below the numeric minimum when expressed
+        // as base / side, so it deliberately resolves to the public boundary.
+        if targetSide == widestSide { return captureLoupeMinZoom }
+        return min(max(captureLoupeBaseSampleSide / targetSide,
+                       captureLoupeMinZoom), captureLoupeMaxZoom)
     }
 
+    /// Sampled source pixels per side. Always an odd whole number, never
+    /// below three, so the pixel under the pointer is a real middle cell
+    /// that the grid can outline instead of a boundary between two cells.
+    static func captureLoupeSampleSide(zoom: CGFloat) -> CGFloat {
+        let clamped = min(max(zoom, captureLoupeMinZoom), captureLoupeMaxZoom)
+        let raw = captureLoupeBaseSampleSide / clamped
+        let odd = 2 * (raw / 2).rounded(.down) + 1
+        return max(captureLoupeMinSampleSide, odd)
+    }
+
+    /// The pixel grid earns its ink only once a cell is big enough that the
+    /// lines separate pixels instead of shading the whole image.
+    static func captureLoupeGridVisible(frameSide: CGFloat, sampleSide: CGFloat) -> Bool {
+        sampleSide > 0 && frameSide / sampleSide >= 6
+    }
+
+    /// Arrow keys move the pointer by whole device pixels of the screen it is
+    /// on, in points, so one press always lands on the neighbouring pixel
+    /// even on Retina displays. Shift covers ten pixels per press.
+    static func captureLoupeNudge(dx: CGFloat,
+                                  dy: CGFloat,
+                                  fast: Bool,
+                                  scale: CGFloat) -> CGPoint {
+        let step = (fast ? 10 : 1) / max(scale, 1)
+        return CGPoint(x: dx * step, y: dy * step)
+    }
+
+    /// The square of source pixels a loupe magnifies. The two loupes centre on
+    /// different things and therefore need opposite parities.
+    ///
+    /// The capture loupe reads a color, so it centres on a whole *pixel*
+    /// (`centredOnPixel`): the side is forced odd because an even one has no
+    /// middle cell, which left the sampled pixel half a cell right of and below
+    /// the frame's centre, and the ring drawn around it followed. Centring on
+    /// the floored coordinate keeps the pointer's sub-pixel position out of it.
+    ///
+    /// The editor's crop loupe marks a crop *edge*, which runs between pixels.
+    /// An edge lands in the middle of the frame only when the side is even and
+    /// the coordinate is whole, so that caller passes `centredOnPixel: false`
+    /// and reads a draft `pixelSnappedCropRect` has put on a boundary.
     static func cropLoupeSampleRect(around point: CGPoint,
                                     imageSize: CGSize,
-                                    sideLength: CGFloat = 14) -> CGRect {
-        let width = min(max(1, floor(sideLength)), max(1, floor(imageSize.width)))
-        let height = min(max(1, floor(sideLength)), max(1, floor(imageSize.height)))
-        let x = min(max(floor(point.x - width / 2), 0), max(0, floor(imageSize.width) - width))
-        let y = min(max(floor(point.y - height / 2), 0), max(0, floor(imageSize.height) - height))
-        return CGRect(x: x, y: y, width: width, height: height)
+                                    sideLength: CGFloat = 13,
+                                    centredOnPixel: Bool = true) -> CGRect {
+        let imageWidth = max(1, floor(imageSize.width))
+        let imageHeight = max(1, floor(imageSize.height))
+        var side = max(1, floor(sideLength))
+        let isEven = side.truncatingRemainder(dividingBy: 2) == 0
+        if centredOnPixel, isEven {
+            side = max(1, side - 1)
+        } else if !centredOnPixel, !isEven {
+            side += 1
+        }
+        let width = min(side, imageWidth)
+        let height = min(side, imageHeight)
+        let x = centredOnPixel ? floor(point.x) - floor(width / 2) : floor(point.x - width / 2)
+        let y = centredOnPixel ? floor(point.y) - floor(height / 2) : floor(point.y - height / 2)
+        return CGRect(x: min(max(x, 0), imageWidth - width),
+                      y: min(max(y, 0), imageHeight - height),
+                      width: width,
+                      height: height)
+    }
+
+    /// Where the one source pixel under `point` lands inside a loupe frame.
+    /// It floors the coordinate exactly like the color read does, so a
+    /// highlight built from this rect can never mark a neighbour of the pixel
+    /// that gets copied, and the pointer's sub-pixel position stops leaking
+    /// into the drawing.
+    static func captureLoupeTargetPixelRect(around point: CGPoint,
+                                            source: CGRect,
+                                            frame: CGRect) -> CGRect {
+        guard source.width >= 1, source.height >= 1 else { return frame }
+        let column = min(max(floor(point.x), source.minX), source.maxX - 1)
+        let row = min(max(floor(point.y), source.minY), source.maxY - 1)
+        let width = frame.width / source.width
+        let height = frame.height / source.height
+        return CGRect(x: frame.minX + (column - source.minX) * width,
+                      y: frame.minY + (row - source.minY) * height,
+                      width: width,
+                      height: height)
     }
 
     // MARK: - Shape geometry

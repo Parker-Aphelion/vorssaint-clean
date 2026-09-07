@@ -15,7 +15,6 @@ enum MenuBarMetricSpacing: String, CaseIterable {
         return MenuBarMetricSpacing(rawValue: Defaults.sanitizedMenuBarMetricSpacing(raw)) ?? .standard
     }
 }
-
 /// How percentage based monitor readings appear in the menu bar. Values keep
 /// the existing numeric blocks; bars replace CPU, GPU, memory and disk usage
 /// with a compact vertical gauge. Readings without a fixed 0...100 scale stay
@@ -267,5 +266,50 @@ enum MenuBarSpacingSupport {
         if hasRenderedTitle { return true }
         guard itemExists else { return false }
         return consecutiveEmptyRenders < emptyMetricRendersBeforeRemoval
+    }
+}
+
+enum StatusItemPlacementSupport {
+    static let mainAutosaveName = "VorssaintMenuBarItem"
+    static let maxPlacementGeneration = 10_000
+
+    static func placementGeneration(in defaults: UserDefaults) -> Int {
+        min(max(defaults.integer(forKey: DefaultsKey.statusItemPlacementGeneration), 0),
+            maxPlacementGeneration)
+    }
+
+    static func mainAutosaveName(in defaults: UserDefaults) -> String {
+        let generation = placementGeneration(in: defaults)
+        guard generation > 0 else { return mainAutosaveName }
+        return "\(mainAutosaveName).\(generation)"
+    }
+
+    /// The visibility macOS remembers for one item identity, in both the
+    /// spellings it has used. Left behind, either keeps the item marked as
+    /// hidden, which is the state the recovery exists to undo.
+    private static func clearRememberedVisibility(of name: String, in defaults: UserDefaults) {
+        defaults.removeObject(forKey: "NSStatusItem Visible \(name)")
+        defaults.removeObject(forKey: "NSStatusItem VisibleCC \(name)")
+    }
+
+    /// Undoes a remembered hidden state while leaving the arranged position
+    /// alone. An item that starts over with no saved position is born at the
+    /// left end of the status area, against the notch, which is the first
+    /// zone macOS drops from a crowded bar (issue #167) — so the spot the
+    /// person already arranged is worth far more than a fresh identity, and
+    /// is only given up when keeping it demonstrably fails.
+    static func clearRememberedVisibility(in defaults: UserDefaults) {
+        clearRememberedVisibility(of: mainAutosaveName(in: defaults), in: defaults)
+    }
+
+    static func bumpPlacementGeneration(in defaults: UserDefaults) {
+        let previousName = mainAutosaveName(in: defaults)
+        defaults.removeObject(forKey: "NSStatusItem Preferred Position \(previousName)")
+        clearRememberedVisibility(of: previousName, in: defaults)
+        let nextGen = (placementGeneration(in: defaults) % maxPlacementGeneration) + 1
+        defaults.set(nextGen, forKey: DefaultsKey.statusItemPlacementGeneration)
+        let nextName = mainAutosaveName(in: defaults)
+        defaults.removeObject(forKey: "NSStatusItem Preferred Position \(nextName)")
+        clearRememberedVisibility(of: nextName, in: defaults)
     }
 }

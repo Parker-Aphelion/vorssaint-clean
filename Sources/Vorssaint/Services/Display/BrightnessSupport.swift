@@ -54,10 +54,17 @@ enum BrightnessSupport {
     }
 
     static let defaultKeyboardLightLevel: Float = 0.5
+    static let keyboardLightStep: Float = 1.0 / 16.0
 
     static func keyboardLightOnLevel(lastNonzero: Float?) -> Float {
         guard let lastNonzero, lastNonzero > 0 else { return defaultKeyboardLightLevel }
         return min(lastNonzero, 1)
+    }
+
+    static func steppedKeyboardLightLevel(current: Float, direction: Int) -> Float {
+        guard current.isFinite else { return 0 }
+        let step = direction < 0 ? -keyboardLightStep : keyboardLightStep
+        return min(max(current + step, 0), 1)
     }
 
     /// The DDC/CI standard also spaces whole commands apart: a host waits at
@@ -213,6 +220,17 @@ enum BrightnessSupport {
     static func scaledGammaTable(_ table: [Float], factor: Float) -> [Float] {
         guard factor < 1 else { return table }
         return table.map { $0 * factor }
+    }
+
+    /// The gamma scale to put back on a software-dimmed display when the
+    /// routes are rebuilt. Only a dim this app applied itself is ours to
+    /// restore: the session's remembered level is also filled in from a
+    /// monitor's own DDC or system reading, and that is its backlight, not a
+    /// gamma scale. Replaying such a level here darkened a screen that was
+    /// already at exactly that brightness, every time the routes were rebuilt
+    /// (issue #697).
+    static func softwareDimToRestore(remembered: Double?, appliedByApp: Bool) -> Double {
+        appliedByApp ? (remembered ?? 1.0) : 1.0
     }
 
     /// The dim level put back on a display that just returned from a

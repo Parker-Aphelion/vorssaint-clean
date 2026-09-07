@@ -88,6 +88,9 @@ class ShelfPanelMoveView: NSView {
 /// shelf once the drop is accepted somewhere.
 struct ShelfTilesView: NSViewRepresentable {
     var items: [ShelfService.Item]
+    /// Only here to make this view compare unequal after an in-place item
+    /// swap; see ShelfService.contentRevision. Never read.
+    var contentRevision: Int
     var selection: Set<UUID>
     var expandedBatches: Set<UUID>
     var revealID: UUID?
@@ -272,6 +275,7 @@ final class ShelfTileView: NSView, NSDraggingSource {
     private var pendingRebuildAfterDrag = false
     private var closeButton: NSButton!
     private var expandButton: NSButton?
+    private let sharePresenter = ShelfSharePresenter()
 
     init(item: ShelfService.Item, isSelected: Bool, isExpanded: Bool) {
         self.item = item
@@ -317,8 +321,12 @@ final class ShelfTileView: NSView, NSDraggingSource {
         iconWell.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
         addSubview(iconWell)
 
-        let imageView = NSImageView(frame: iconWell.bounds.insetBy(dx: item.isImage ? 4 : 13,
-                                                                   dy: item.isImage ? 4 : 8))
+        // Not `isImage`: an image whose thumbnail has not been decoded yet
+        // (or could not be) is still wearing the generic fallback icon, and
+        // that wants the generic inset until the real frame arrives.
+        let hasThumbnail = item.hasContentThumbnail
+        let imageView = NSImageView(frame: iconWell.bounds.insetBy(dx: hasThumbnail ? 4 : 13,
+                                                                   dy: hasThumbnail ? 4 : 8))
         imageView.image = item.icon
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.autoresizingMask = [.width, .height]
@@ -389,14 +397,20 @@ final class ShelfTileView: NSView, NSDraggingSource {
             let breakdown = ShelfTooltipSupport.breakdown(of: item.tooltipLeafKinds)
             let s = L10n.shared.s
             let strings = ShelfTooltipStrings(itemsFormat: s.shelfTooltipItemsFormat,
+                                              itemsFew: s.shelfTooltipItemsFew,
                                               imageSingular: s.shelfTooltipImageSingular,
+                                              imageFew: s.shelfTooltipImageFew,
                                               imagePlural: s.shelfTooltipImagePlural,
                                               fileSingular: s.shelfTooltipFileSingular,
+                                              fileFew: s.shelfTooltipFileFew,
                                               filePlural: s.shelfTooltipFilePlural,
                                               noteSingular: s.shelfTooltipNoteSingular,
+                                              noteFew: s.shelfTooltipNoteFew,
                                               notePlural: s.shelfTooltipNotePlural,
                                               linkSingular: s.shelfTooltipLinkSingular,
-                                              linkPlural: s.shelfTooltipLinkPlural)
+                                              linkFew: s.shelfTooltipLinkFew,
+                                              linkPlural: s.shelfTooltipLinkPlural,
+                                              usesFewForm: L10n.shared.language.usesFewCountForm)
             return ShelfTooltipSupport.text(forPile: breakdown, strings: strings)
         }
     }
@@ -449,6 +463,10 @@ final class ShelfTileView: NSView, NSDraggingSource {
         ShelfService.shared.noteInteraction()
         let urls = ShelfService.shared.fileURLsForActions(startingAt: item)
         guard !urls.isEmpty else { return nil }
+        // A tooltip already showing (or about to show, from a hover just
+        // before the right-click) has no reason to stick around once a
+        // context menu covers the same corner of the tile it anchors to.
+        ShelfTooltipPopover.shared.hide()
 
         let strings = L10n.shared.s
         let menu = NSMenu()
@@ -481,12 +499,7 @@ final class ShelfTileView: NSView, NSDraggingSource {
         }
         menu.addItem(openWith)
 
-        let airDrop = NSMenuItem(title: strings.shelfActionAirDrop,
-                                 action: #selector(shareWithAirDrop),
-                                 keyEquivalent: "")
-        airDrop.target = self
-        airDrop.isEnabled = NSSharingService(named: .sendViaAirDrop) != nil
-        menu.addItem(airDrop)
+        menu.addItem(sharePresenter.shareMenuItem(for: urls, title: strings.shelfActionShare))
         menu.addItem(.separator())
 
         let reveal = NSMenuItem(title: strings.cleanerRevealInFinder,
@@ -547,14 +560,6 @@ final class ShelfTileView: NSView, NSDraggingSource {
         NSWorkspace.shared.open(urls,
                                 withApplicationAt: applicationURL,
                                 configuration: configuration)
-    }
-
-    @objc private func shareWithAirDrop() {
-        let urls = ShelfService.shared.fileURLsForActions(startingAt: item)
-        guard !urls.isEmpty,
-              let service = NSSharingService(named: .sendViaAirDrop) else { return }
-        NSApp.activate(ignoringOtherApps: true)
-        service.perform(withItems: urls)
     }
 
     @objc private func revealFiles() {

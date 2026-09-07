@@ -58,6 +58,10 @@ struct BrightnessSection: View {
                             }
                     }
                 }
+                if AppFeature.extraBrightness.isAvailable {
+                    Divider()
+                    ExtraBrightnessPanelToggle()
+                }
             }
             .padding(.bottom, !editing && !showOSDControl ? 2 : 0)
             .panelCard()
@@ -105,6 +109,23 @@ struct BrightnessSection: View {
         Binding(get: { display.brightness },
                 set: { service.setBrightness($0, for: display.id,
                                              showOSD: brightnessOSDEnabled) })
+    }
+}
+
+private struct ExtraBrightnessPanelToggle: View {
+    @ObservedObject private var l10n = L10n.shared
+    @ObservedObject private var service = ExtraBrightnessService.shared
+    @AppStorage(DefaultsKey.extraBrightnessEnabled) private var enabled = false
+
+    var body: some View {
+        Toggle(l10n.s.extraBrightnessName, isOn: $enabled)
+            .font(.system(size: 10.5, weight: .medium))
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .disabled(!service.supported && !enabled)
+            .help(service.supported ? l10n.s.extraBrightnessCaption : l10n.s.extraBrightnessUnsupported)
+            .onChange(of: enabled) { _, _ in service.syncWithPreferences() }
+            .onAppear { service.syncWithPreferences() }
     }
 }
 

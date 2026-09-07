@@ -72,6 +72,9 @@ osascript -e 'tell application "System Events" to key code 53' >/dev/null
 sleep 0.8
 
 step "Settings window"
+# Reopen the panel to make Vorssaint active before sending its menu shortcut.
+ax 'click menu bar item 1 of menu bar 2' >/dev/null
+sleep 1.2
 osascript -e 'tell application "System Events" to keystroke "," using {command down}' >/dev/null
 sleep 1.5
 SW=$(ax 'get position of window "Vorssaint Settings"')

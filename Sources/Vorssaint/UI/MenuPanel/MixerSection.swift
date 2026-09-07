@@ -13,6 +13,10 @@ struct MixerSection: View {
     @ObservedObject private var mixer = AppVolumeMixer.shared
     @ObservedObject private var inputManager = AudioInputDeviceManager.shared
     @ObservedObject private var outputSwitcher = SoundOutputSwitcher.shared
+    @ObservedObject private var preciseVolumeRoller = PreciseVolumeRollerService.shared
+    @ObservedObject private var permissions = Permissions.shared
+    @AppStorage(DefaultsKey.mixerHideInactiveApps)
+    private var hideInactiveApps = false
     @AppStorage(DefaultsKey.mixerLowerVolumeOnHeadphonesDisconnect)
     private var lowerOnHeadphonesDisconnect = false
     @AppStorage(DefaultsKey.mixerHeadphonesDisconnectVolumePercent)
@@ -21,10 +25,13 @@ struct MixerSection: View {
     private var showHeadphoneDisconnectControl = true
     @AppStorage(DefaultsKey.panelMixerShowSystemSoundsControl)
     private var showSystemSoundsControl = true
+    @AppStorage(DefaultsKey.preciseVolumeRollerEnabled)
+    private var preciseVolumeRollerEnabled = false
     @AppStorage(DefaultsKey.soundOutputSwitcherEnabled)
     private var soundOutputSwitcherEnabled = false
     @State private var soundOutputSwitcherUIDs: [String] = []
     @State private var showListChooser = false
+    @State private var optionsExpanded = false
     @State private var normalSliderTint = Color(nsColor: .controlAccentColor)
     @State private var accentRevision = 0
     @State private var lastResolvedAccent: NSColor?
@@ -36,26 +43,9 @@ struct MixerSection: View {
                      supportsEditing: true,
                      resetAction: resetPanelDefaults) { editing in
             VStack(alignment: .leading, spacing: 8) {
-                outputPickers(editing: editing)
-                if editing || showHeadphoneDisconnectControl {
-                    if editing {
-                        HStack(spacing: 6) {
-                            Text(l10n.s.mixerLowerOnHeadphonesDisconnect)
-                                .font(.system(size: 11.5, weight: .medium))
-                                .foregroundStyle(showHeadphoneDisconnectControl
-                                                 ? Color.primary : Color.secondary)
-                            Spacer(minLength: 0)
-                            PanelInlineHideButton(isVisible: $showHeadphoneDisconnectControl)
-                        }
-                    } else {
-                        headphoneDisconnectProtectionToggle
-                    }
-                }
-                if AppFeature.soundOutputSwitcher.isAvailable {
-                    soundOutputSwitcherControls
-                }
-                microphonePicker
-                if AppVolumeMixer.isSupported, (!mixer.apps.isEmpty || mixer.needsPermission) {
+                audioDevicesSection(editing: editing)
+
+                if AppVolumeMixer.isSupported, (!visibleApps.isEmpty || mixer.needsPermission) {
                     Divider()
                 }
 
@@ -63,15 +53,14 @@ struct MixerSection: View {
                     emptyLabel(l10n.s.mixerUnavailable)
                 } else if mixer.needsPermission {
                     permissionHint
-                } else if mixer.apps.isEmpty {
+                } else if visibleApps.isEmpty {
                     emptyLabel(l10n.s.mixerEmpty)
                 } else {
                     mixerRows
                 }
-                if AppVolumeMixer.isSupported, !listChoices.isEmpty {
-                    Divider()
-                    listVisibilityFooter
-                }
+
+                Divider()
+                optionsDisclosure(editing: editing)
             }
             .panelCard()
         }
@@ -91,7 +80,7 @@ struct MixerSection: View {
         showSystemSoundsControl = true
     }
 
-    private func outputPickers(editing: Bool) -> some View {
+    private func audioDevicesSection(editing: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             universalOutputPicker
             if editing || showSystemSoundsControl {
@@ -108,9 +97,60 @@ struct MixerSection: View {
                     systemSoundOutputPicker
                 }
             }
+            microphonePicker
             if let outputSwitchError = mixer.outputSwitchError {
                 inputMessage(String(format: l10n.s.mixerSystemOutputErrorFormat, outputSwitchError),
                              systemImage: "exclamationmark.triangle")
+            }
+        }
+    }
+
+    private func optionsDisclosure(editing: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                optionsExpanded.toggle()
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 12)
+                        .rotationEffect(.degrees(optionsExpanded || editing ? 90 : 0))
+                    Text(l10n.s.keepAwakeOptions)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if optionsExpanded || editing {
+                VStack(alignment: .leading, spacing: 8) {
+                    if AppVolumeMixer.isSupported {
+                        inactiveAppsVisibilityToggle
+                    }
+                    if editing {
+                        HStack(spacing: 6) {
+                            Text(l10n.s.mixerLowerOnHeadphonesDisconnect)
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundStyle(showHeadphoneDisconnectControl
+                                                 ? Color.primary : Color.secondary)
+                            Spacer(minLength: 0)
+                            PanelInlineHideButton(isVisible: $showHeadphoneDisconnectControl)
+                        }
+                    } else if showHeadphoneDisconnectControl {
+                        headphoneDisconnectProtectionToggle
+                    }
+                    preciseVolumeRollerToggle
+                    if AppFeature.soundOutputSwitcher.isAvailable {
+                        soundOutputSwitcherControls
+                    }
+                    if AppVolumeMixer.isSupported, !listChoices.isEmpty {
+                        listVisibilityFooter
+                    }
+                }
+                .padding(.leading, 19)
             }
         }
     }
@@ -315,6 +355,36 @@ struct MixerSection: View {
 
     private var headphonesDisconnectDisplayPercent: Int {
         Defaults.sanitizedMixerHeadphonesDisconnectVolumePercent(headphonesDisconnectVolumePercent)
+    }
+
+    private var preciseVolumeRollerToggle: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Toggle(l10n.s.preciseVolumeRollerEnable, isOn: $preciseVolumeRollerEnabled)
+                .toggleStyle(.checkbox)
+                .font(.system(size: 11.5, weight: .medium))
+                .onChange(of: preciseVolumeRollerEnabled) { _, enabled in
+                    if enabled { permissions.requestAccessibility() }
+                    PreciseVolumeRollerService.shared.syncWithPreferences()
+                }
+
+            Text(l10n.s.preciseVolumeRollerCaption)
+                .font(.system(size: 9.5))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if preciseVolumeRollerEnabled, !permissions.accessibility {
+                Button {
+                    Permissions.shared.openAccessibilitySettings()
+                } label: {
+                    Label(l10n.s.permissionOpenSettings, systemImage: "hand.raised")
+                }
+                .buttonStyle(.link)
+                .font(.system(size: 10.5, weight: .medium))
+            } else if preciseVolumeRoller.tapFailed {
+                inputMessage(l10n.s.preciseVolumeRollerTapFailed,
+                             systemImage: "exclamationmark.triangle")
+            }
+        }
     }
 
     private var soundOutputSwitcherControls: some View {
@@ -535,7 +605,6 @@ struct MixerSection: View {
                 }
             }
         }
-        .animation(.easeOut(duration: 0.15), value: showListChooser)
     }
 
     private func listedBinding(for choice: MixerListChoice) -> Binding<Bool> {
@@ -549,6 +618,30 @@ struct MixerSection: View {
                 }
             }
         )
+    }
+
+    private var inactiveAppsVisibilityToggle: some View {
+        let label = FeatureStrings.mixer(l10n.language).hideInactiveApps
+        return HStack(spacing: 8) {
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 6)
+            Toggle(label, isOn: $hideInactiveApps)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .accessibilityLabel(label)
+        }
+    }
+
+    private var visibleApps: [MixerApp] {
+        mixer.apps.filter { app in
+            MixerRoutingSupport.shouldShowApp(isPlaying: app.isPlaying,
+                                              volume: app.volume,
+                                              selectedOutputDeviceUID: app.selectedOutputDeviceUID,
+                                              hideInactiveApps: hideInactiveApps)
+        }
     }
 
     private func inputDeviceTitle(_ device: MixerInputDevice) -> String {
@@ -576,7 +669,7 @@ struct MixerSection: View {
     @ViewBuilder
     private var mixerRows: some View {
 #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
+        if #available(macOS 26.0, *), LiquidGlassSupport.isEnabled() {
             GlassEffectContainer(spacing: 8) {
                 rowList
             }
@@ -590,7 +683,7 @@ struct MixerSection: View {
 
     @ViewBuilder
     private var rowList: some View {
-        ForEach(mixer.apps) { app in
+        ForEach(visibleApps) { app in
             MixerRow(app: app,
                      normalTint: normalSliderTint,
                      accentRevision: accentRevision,
@@ -1064,7 +1157,7 @@ private struct MixerVolumeSlider: View {
     var body: some View {
         Group {
 #if compiler(>=6.2)
-            if #available(macOS 26.0, *) {
+            if #available(macOS 26.0, *), LiquidGlassSupport.isEnabled() {
                 LiquidGlassMixerSlider(value: $value,
                                        tint: activeTint,
                                        isBoosting: isBoosting,
