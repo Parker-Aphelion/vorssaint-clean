@@ -3,9 +3,6 @@
 
 import CoreGraphics
 
-/// Fixed-height pieces around the menu panel's scrolling content.
-/// The stock combination keeps its historical height; once either optional
-/// row is hidden, the panel contracts to the exact height of what remains.
 enum MenuPanelChromeLayout {
     static let panelPadding: CGFloat = 12
     static let spacing: CGFloat = 12
@@ -23,8 +20,7 @@ enum MenuPanelChromeLayout {
                        showsFooterActions: Bool) -> CGFloat {
         let bannerHeight = measuredBannerHeight.map { max($0, 48) + spacing } ?? 0
 
-        // Keep the current panel dimensions for every existing user and fresh
-        // install; tight sizing begins only after an appearance option changes.
+        // Preserve the existing panel height when both rows are visible.
         if showsBrandMark, showsFooterActions {
             return legacyChromeHeight + bannerHeight
         }

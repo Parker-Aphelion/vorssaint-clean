@@ -5814,7 +5814,7 @@ struct MetricsTests {
                == ["uninstaller", "homebrew", "media", "cleanURL", "cleaning"],
                "panel item order keeps saved valid items first and appends defaults")
 
-        // MARK: Menu bar icon right-click menu layout
+        // MARK: Right-click menu
 
         let contextMenuDefaultOrder = StatusItemContextMenuLayout.defaultOrder
         expect(contextMenuDefaultOrder.map(\.rawValue) == [

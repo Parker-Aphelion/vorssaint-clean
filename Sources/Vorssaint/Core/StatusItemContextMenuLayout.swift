@@ -3,9 +3,7 @@
 
 import Foundation
 
-/// Stable identities for the actions in the menu bar icon's right-click menu.
-/// Case order is the default menu order; raw values are persisted and must not
-/// be renamed after release.
+// Do not rename these IDs. Saved menu settings use them.
 enum StatusItemContextMenuItemID: String, CaseIterable, Identifiable {
     case keepAwakeToggle, activateFor, cleaningMode
     case settings, about, uninstaller, shelf, checkForUpdates
@@ -13,8 +11,6 @@ enum StatusItemContextMenuItemID: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    /// Settings and Quit remain available as the reliable ways to configure or
-    /// leave the app, even when every optional action is hidden.
     var canHide: Bool {
         self != .settings && self != .quit
     }
@@ -30,10 +26,7 @@ enum StatusItemContextMenuItemID: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Hub availability controls whether feature-specific actions participate
-    /// in either the menu or its editor. Runtime state can narrow this further:
-    /// Activate for is omitted while Keep Awake is already active, and Shelf
-    /// additionally requires its own enable preference.
+    // The menu applies additional checks for Keep Awake and Shelf.
     var isAvailable: Bool {
         switch self {
         case .keepAwakeToggle, .activateFor:
@@ -49,8 +42,6 @@ enum StatusItemContextMenuItemID: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Stable editor titles. The live Keep Awake menu item may replace its
-    /// title with the current Enable/Disable wording when the menu opens.
     func title(_ strings: Strings) -> String {
         switch self {
         case .keepAwakeToggle: return strings.keepAwakeTitle
@@ -66,15 +57,10 @@ enum StatusItemContextMenuItemID: String, CaseIterable, Identifiable {
     }
 }
 
-/// Semantic menu groups. Dividers are derived after unavailable and hidden
-/// items are removed, preventing leading, trailing or adjacent separators.
 enum StatusItemContextMenuGroup {
     case actions, application, termination
 }
 
-/// Persistence and normalization for the right-click menu. Missing or corrupt
-/// entries never make an action disappear: known saved IDs come first and any
-/// newly introduced IDs are appended in canonical order.
 enum StatusItemContextMenuLayout {
     static let defaultOrder = StatusItemContextMenuItemID.allCases
 
@@ -116,16 +102,12 @@ enum StatusItemContextMenuLayout {
         !hiddenItems(defaults: defaults).contains(item)
     }
 
-    /// Applies the user's visibility choices. The menu renderer separately
-    /// removes commands that are unavailable in the current runtime state.
     static func visibleOrder(defaults: UserDefaults = .standard) -> [StatusItemContextMenuItemID] {
         let hidden = hiddenItems(defaults: defaults)
         return order(defaults: defaults).filter { !hidden.contains($0) }
     }
 
-    /// Zero-based indexes before which AppKit should insert a separator.
-    /// Transitions are computed from the final visible order so no empty group
-    /// can leave an orphaned divider behind.
+    // Use the visible items to prevent empty menu groups.
     static func separatorIndexes(for items: [StatusItemContextMenuItemID]) -> IndexSet {
         guard let first = items.first else { return [] }
         var indexes = IndexSet()

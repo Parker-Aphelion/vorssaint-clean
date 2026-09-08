@@ -162,7 +162,6 @@ struct DisplayPowerButton: View {
                         .font(.system(size: compact ? 10.5 : 12, weight: .semibold))
                         .foregroundStyle(display.isActive ? AnyShapeStyle(.secondary)
                                                          : AnyShapeStyle(.green))
-                        // The compact power glyph sits one point below the adjacent percentage.
                         .offset(y: compact && display.isActive ? -1 : 0)
                         .frame(width: compact ? 16 : 20, height: 18)
                 }

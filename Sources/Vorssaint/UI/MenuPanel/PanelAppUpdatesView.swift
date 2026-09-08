@@ -33,8 +33,7 @@ struct PanelAppUpdatesView: View {
             Label(text.pageTitle, systemImage: "arrow.down.app")
                 .font(.system(size: 12, weight: .semibold))
             Spacer()
-            // Keep this compact beside the close button; the panel footer can
-            // be hidden, so this remains the local route to update settings.
+            // Keep this settings button available when the panel footer is hidden.
             Button {
                 SettingsRouter.shared.page = .appUpdates
                 appDelegate()?.openSettingsWindow()

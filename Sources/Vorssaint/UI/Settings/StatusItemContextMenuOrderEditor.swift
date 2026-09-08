@@ -4,9 +4,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Drag-to-reorder and show/hide list for the menu bar icon's right-click menu.
-/// The full order stays stored when a feature is unavailable, so bringing the
-/// feature back restores the user's chosen position and visibility.
+// Keep saved positions for features that are not available.
 struct StatusItemContextMenuOrderEditor: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared

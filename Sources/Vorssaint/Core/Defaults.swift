@@ -289,8 +289,7 @@ enum DefaultsKey {
     static let panelShowToggles = "panelShowToggles"
     static let panelShowBrandMark = "panelShowBrandMark"
     static let panelShowFooterActions = "panelShowFooterActions"
-    // Menu bar icon context menu: both comma-joined lists are deliberately
-    // unregistered so absence keeps the canonical order and shows every item.
+    // An absent value uses the default order and shows all menu items.
     static let statusItemContextMenuOrder = "statusItemContextMenuOrder"
     static let statusItemContextMenuHiddenItems = "statusItemContextMenuHiddenItems"
     // Quick toggles tab: per-action visibility (the order lives in panelToggleOrder).

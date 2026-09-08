@@ -9,7 +9,6 @@ protocol PanelOrderItem: RawRepresentable, CaseIterable, Hashable where RawValue
 enum PanelSectionLayout {
     static let contentSpacing: CGFloat = 8
     static let editControlsHeight: CGFloat = 24
-    /// Centers the action row between the navigation capsule and content card.
     static let editControlsTopOverflow: CGFloat = 7.5
 }
 
@@ -312,7 +311,6 @@ struct PanelSection<Content: View>: View {
             } else {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 11, weight: .semibold))
-                    // Bottom-align the glyph with the section title without moving its hit target.
                     .offset(y: -3.5)
                     .frame(width: editIconWidth, height: 18)
                     .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
